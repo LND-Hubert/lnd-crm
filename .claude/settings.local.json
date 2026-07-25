@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(diff /Users/hubinovic/Downloads/lnd-crm-project/src/App.jsx \"/Users/hubinovic/Downloads/lnd-crm-unifie_2.jsx\" | tail -300)",
+      "Bash(npm install *)",
+      "Bash(mkdir -p \"/Users/hubinovic/Downloads/lnd-crm-project/.claude\")"
+    ]
+  }
+}
