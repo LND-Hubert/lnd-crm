@@ -144,8 +144,20 @@ function LoginScreen({onLogin}) {
     <div style={{minHeight:"100vh",background:NAVY,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Georgia,serif"}}>
       <div style={{width:420,background:WHITE,borderRadius:12,padding:"48px 44px",boxShadow:"0 40px 100px rgba(0,0,0,0.4)",borderTop:`4px solid ${GOLD}`}}>
         <div style={{textAlign:"center",marginBottom:36}}>
-          <div style={{fontSize:52,fontWeight:700,color:NAVY,letterSpacing:-2,lineHeight:1,fontFamily:"Georgia,serif"}}>LND</div>
-          <div style={{fontSize:10,letterSpacing:5,color:GOLD,textTransform:"uppercase",fontWeight:700,marginTop:6,fontFamily:"sans-serif"}}>Les Nouveaux Directeurs</div>
+          <svg viewBox="0 0 1750.55 537.72" style={{width:200,height:62,display:"block",margin:"0 auto"}} xmlns="http://www.w3.org/2000/svg">
+            <defs><style>{`.ll1{fill:#1B2A4A}.ll2{fill:#B8963E}`}</style></defs>
+            <g>
+              <path className="ll1" d="M1229.98,12.96c-17.77-3.8-34.5-4.11-52.08-3.99-21.81.15-50.25.96-57.61,21.19-3.4,9.36-4.6,19.18-4.61,29.41l-.12,152.74-32.91-.12-.16-166.84c0-9.25-4.69-20.14-10.18-26.52-11.59-13.46-33.14-11.55-38.14-14.57-.84-.51.47-3.66,1.33-4.25h188.25c64.46,1.8,118.52,26.89,155.18,79.84,16.28,24.01,26.85,49.93,34.27,77.99,4.4,17.98,6.64,35.84,7.27,54.52l-55.23-.08c-1.21-26.12-4.97-50.31-12.45-75.01-8.66-29.12-23.24-55.01-43.05-77.99s-48.06-39.54-79.74-46.31Z"/>
+              <path className="ll1" d="M725.38,53.1l.15,158.87h-14.24s.15-72.49.15-72.49l-.29-95.27c-.01-3.87-4.1-8.53-6.65-11.27-23.8-25.61-59.56-25.36-65.37-28.34-.8-.41-.62-2.6-.35-4.58l111.28.03,64.99,74.99,85.98,96.65,36.12,40.57-72.22.09-56.98-65.29-82.57-93.96Z"/>
+              <path className="ll1" d="M755.62,407.86c.06,9.41-1.73,16.8-4.68,24.81-5.53,15.06-9.43,33.83,3.98,37.17.77.19,2.51,1.43,2.81,1.91.39.64-.07,1.72-.93,3.11l-400.81-.07c-1.41,0-1.4-5.22-.05-5.48l15.77-3.02c19.79-3.79,28.69-24.15,29.87-44.25v-104.69s49.3-.14,49.3-.14l.14,91.39c.04,25.97,10.27,44.32,35.62,50.68,13.01,3.27,25.78,4.69,39.29,4.69l85.74.04c30.71.01,60.6-4.2,89.36-15.24,13.1-5.03,24.19-14.45,33.76-24.29l8.46-11.7c2.8-3.88,6.64-5.43,12.38-4.93Z"/>
+              <path className="ll1" d="M1116.13,415.99c.08,17.48,2.12,38.78,16.87,45.36,7.1,3.17,15.24,4.47,23.17,4.91,46.66,2.56,96.63-5.28,132.26-36.75l21.76-22.01c12.37-14.71,21.26-31.29,30.35-48.11,5.38-14.14,9.54-27.45,12.91-42.16l58.77.05c-10.33,53.44-44.94,103.89-93.28,130.49-30.6,16.83-64.11,26.63-99.65,26.71l-132.85.3-33.15-37.05,62.83-21.74Z"/>
+              <path className="ll1" d="M450.97,57.21l-.02,155.08-49.33.04-.23-161.24c-.02-11.79-4.38-23.76-11.01-32.52C377.51,1.56,351.86,9.53,357.86.02l135.7-.02,1.56,3.2c.42.86-1.78,2.53-2.86,2.75l-15.08,3.07c-8.86,1.8-17.1,8.7-20.68,16.92-4.28,9.81-5.52,19.72-5.52,31.28Z"/>
+              <polygon className="ll1" points="1115.51 317.24 1115.66 409.57 1047.37 430.33 1013.77 394.29 943.63 317.4 1018.32 317.23 1082.42 388.8 1082.67 317.38 1115.51 317.24"/>
+              <path className="ll1" d="M724.93,394.8c-.07,7.23-5.48,25.23-9.03,26.19-1.07.29-3.44-.5-4.63-1.22l.05-102.19,13.91-.34.16,30.63-.45,46.94Z"/>
+              <text style={{fill:"#B8963E",fontFamily:"sans-serif",fontSize:67,fontWeight:700,letterSpacing:"0.09em"}} transform="translate(296.47 288.02)">LES NOUVEAUX DIRECTEURS</text>
+            </g>
+            <path className="ll2" d="M1074.94,432.8c-82.98,27.37-166.6,50.49-252.55,68.3-127.92,26.52-270.64,43.31-400.74,34.05-49.47-3.52-97.13-11.35-143.86-25.29-1.57-1.87-.33-2.44,3.72-1.69,82.89,20.13,168.39,21.43,253.94,16.06,160.14-10.06,366.73-53.99,519.8-102.58l92.64-29.41,14.12-4.55c75.22-24.26,148.72-51.86,221.34-82.86,3.09-.87,4.7-.63,2.2,1.8-49.59,24.62-99.08,47.36-150.95,67.31"/>
+          </svg>
           <div style={{width:40,height:2,background:GOLD,margin:"14px auto 0"}}/>
         </div>
         {[{l:"Email",v:email,s:setEmail,p:"votre@lnd.fr",t:"text"},{l:"Mot de passe",v:pwd,s:setPwd,p:"••••••••",t:"password"}].map(f=>(
@@ -1140,6 +1152,48 @@ export default function LNDUnifie() {
                 </div>
               ))}
             </div>
+
+            {/* ── CALENDRIER ── */}
+            {(()=>{
+              const [yr,mo] = agendaMois.split("-").map(Number);
+              const firstDay = new Date(yr, mo-1, 1).getDay();
+              const startOffset = firstDay===0?6:firstDay-1; // Lundi=0
+              const daysInMonth = new Date(yr, mo, 0).getDate();
+              const today = new Date();
+              const jours = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
+              const typeColor = {rdv:GOLD,appel:NAVY2,audit:"#8e44ad",note:GREEN};
+              const cells = [];
+              for(let i=0;i<startOffset;i++) cells.push(null);
+              for(let d=1;d<=daysInMonth;d++) cells.push(d);
+              return (
+                <div style={{background:WHITE,borderRadius:10,overflow:"hidden",boxShadow:"0 2px 16px rgba(27,42,74,0.08)",marginBottom:24}}>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",background:NAVY}}>
+                    {jours.map(j=><div key={j} style={{padding:"10px 0",textAlign:"center",fontSize:10,fontWeight:700,color:GOLD,letterSpacing:1.5,fontFamily:"sans-serif"}}>{j}</div>)}
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:0}}>
+                    {cells.map((d,i)=>{
+                      if(!d) return <div key={`e${i}`} style={{minHeight:72,background:"#fafaf8",borderRight:"1px solid #f0ede8",borderBottom:"1px solid #f0ede8"}}/>;
+                      const dateStr=`${yr}-${String(mo).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+                      const evs=agendaEvents.filter(e=>e.date===dateStr);
+                      const isToday=today.getFullYear()===yr&&today.getMonth()===mo-1&&today.getDate()===d;
+                      const isWeekend=(i%7)===5||(i%7)===6;
+                      return (
+                        <div key={d} style={{minHeight:72,padding:"6px 6px 4px",borderRight:"1px solid #f0ede8",borderBottom:"1px solid #f0ede8",background:isWeekend?"#faf8f5":WHITE,cursor:evs.length>0?"pointer":"default",transition:"background 0.1s"}}
+                          onClick={()=>{if(evs.length>0){setAgendaMois(dateStr.slice(0,7));}}}
+                          onMouseEnter={e=>{if(e.currentTarget.style)e.currentTarget.style.background=CREAM}}
+                          onMouseLeave={e=>{if(e.currentTarget.style)e.currentTarget.style.background=isWeekend?"#faf8f5":WHITE}}>
+                          <div style={{width:22,height:22,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",background:isToday?GOLD:"transparent",color:isToday?WHITE:isWeekend?"#aaa":NAVY,fontSize:11,fontWeight:isToday?700:500,fontFamily:"sans-serif",marginBottom:3}}>{d}</div>
+                          {evs.slice(0,2).map((ev,ei)=>(
+                            <div key={ei} style={{fontSize:9,fontWeight:600,color:WHITE,background:typeColor[ev.type]||GOLD,borderRadius:3,padding:"2px 5px",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"sans-serif"}}>{ev.titre}</div>
+                          ))}
+                          {evs.length>2&&<div style={{fontSize:9,color:GOLD,fontFamily:"sans-serif",fontWeight:600}}>+{evs.length-2}</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Liste événements du mois */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
