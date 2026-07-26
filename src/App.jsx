@@ -616,7 +616,7 @@ function ModuleRapports({restaurants, prospects, users, periode}) {
         <h1 style={{fontSize:28,fontWeight:700,margin:0,letterSpacing:-0.5,fontFamily:"'Cormorant Garamond',serif"}}>Rapports & Analyses</h1>
         <div style={{width:36,height:2,background:GOLD,marginTop:9}}/>
         <div style={{fontSize:12,color:"#aaa",fontFamily:"sans-serif",marginTop:10}}>
-          Période : <strong style={{color:NAVY}}>{periode==="mensuel"?"Mai 2024":periode==="trimestriel"?"T1 2024 (Mar–Mai)":"Annuel 2024"}</strong>
+          Période : <strong style={{color:NAVY}}>{(()=>{const n=new Date();const mois=n.toLocaleDateString("fr-FR",{month:"long",year:"numeric"});const mc=mois.charAt(0).toUpperCase()+mois.slice(1);const an=n.getFullYear();const t=Math.ceil((n.getMonth()+1)/3);return periode==="mensuel"?mc:periode==="trimestriel"?`T${t} ${an}`:`Annuel ${an}`;})()}</strong>
           {" · "}{activeRestos.length} établissement{activeRestos.length>1?"s":""} actif{activeRestos.length>1?"s":""}
           {" · "}{directors.length} directeur{directors.length>1?"s":""}
         </div>
