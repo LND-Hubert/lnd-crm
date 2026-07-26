@@ -1014,94 +1014,101 @@ export default function LNDUnifie() {
     <div style={{fontFamily:"Georgia,serif",background:CREAM,minHeight:"100vh",color:NAVY,display:"flex"}}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&display=swap');
-        .sidebar-overlay{display:none}
+        .sidebar{position:sticky;top:0;height:100vh;width:230px;background:#1B2A4A;display:flex;flex-direction:column;flex-shrink:0;transition:transform 0.3s ease;z-index:100}
+        .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99}
+        .hamburger{display:none;position:fixed;top:12px;left:12px;z-index:200;background:#1B2A4A;border:1px solid #B8963E;border-radius:6px;padding:8px 10px;cursor:pointer;flex-direction:column;gap:4px;align-items:center}
+        .main-content{flex:1;padding:32px 36px;overflow-y:auto;min-width:0}
         @media(max-width:768px){
-          .sidebar-desktop{display:none!important}
-          .sidebar-overlay{display:block;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:199}
-          .sidebar-mobile{position:fixed!important;left:0;top:0;bottom:0;z-index:200;transform:translateX(-100%);transition:transform 0.3s ease}
-          .sidebar-mobile.open{transform:translateX(0)}
-          .hamburger{display:flex!important}
-          .main-content{padding:16px!important}
-        }
-        @media(min-width:769px){
-          .hamburger{display:none!important}
+          .sidebar{position:fixed!important;top:0;left:0;bottom:0;height:100vh;transform:translateX(-100%)}
+          .sidebar.open{transform:translateX(0)}
+          .overlay.open{display:block}
+          .hamburger{display:flex}
+          .main-content{padding:60px 16px 16px!important}
         }
       `}</style>
 
       {/* Overlay mobile */}
-      {sidebarOpen&&<div className="sidebar-overlay" onClick={()=>setSidebarOpen(false)}/>}
+      <div className={`overlay${sidebarOpen?" open":""}`} onClick={()=>setSidebarOpen(false)}/>
 
-      {/* Bouton hamburger mobile */}
-      <button className="hamburger" onClick={()=>setSidebarOpen(v=>!v)} style={{display:"none",position:"fixed",top:12,left:12,zIndex:300,background:NAVY,border:`1px solid ${GOLD}`,borderRadius:6,padding:"8px 10px",cursor:"pointer",flexDirection:"column",gap:4}}>
+      {/* Hamburger mobile */}
+      <button className="hamburger" onClick={()=>setSidebarOpen(v=>!v)}>
         <div style={{width:18,height:2,background:GOLD,borderRadius:1}}/>
         <div style={{width:18,height:2,background:GOLD,borderRadius:1}}/>
         <div style={{width:18,height:2,background:GOLD,borderRadius:1}}/>
       </button>
 
-      {/* ── SIDEBAR (desktop fixe + mobile drawer) ── */}
-      {[false,true].map(isMobile=>(
-        <div key={isMobile?"mobile":"desktop"}
-          className={isMobile?`sidebar-mobile${sidebarOpen?" open":""}`:"sidebar-desktop"}
-          style={{width:230,background:NAVY,display:"flex",flexDirection:"column",flexShrink:0,...(isMobile?{}:{position:"sticky",top:0,height:"100vh"})}}>
-          <div style={{padding:"26px 24px 20px",borderBottom:"1px solid rgba(184,150,62,0.2)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <div>
-              <div style={{fontSize:36,fontWeight:700,color:CREAM,letterSpacing:-1.5,lineHeight:1,fontFamily:"'Cormorant Garamond',Georgia,serif"}}>LND</div>
-              <div style={{fontSize:8,letterSpacing:3,color:GOLD,textTransform:"uppercase",marginTop:4,fontWeight:700,fontFamily:"sans-serif"}}>
-                {showRapportModule?"Rapports":showCommercialModule?"CRM Commercial":"CRM Opérationnel"}
-              </div>
-            </div>
-            {isMobile&&<button onClick={()=>setSidebarOpen(false)} style={{background:"none",border:"none",color:"rgba(245,240,234,0.5)",fontSize:20,cursor:"pointer",lineHeight:1}}>✕</button>}
-          </div>
-
-          {/* User */}
-          <div style={{padding:"12px 20px",borderBottom:"1px solid rgba(184,150,62,0.12)",display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:32,height:32,borderRadius:"50%",background:GOLD,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:NAVY,flexShrink:0,fontFamily:"sans-serif"}}>{currentUser.avatar}</div>
-            <div>
-              <div style={{fontSize:11,fontWeight:700,color:CREAM,fontFamily:"sans-serif"}}>{currentUser.name}</div>
-              <div style={{fontSize:9,color:GOLD,fontFamily:"sans-serif",letterSpacing:1}}>{currentUser.role==="president"?"Président":currentUser.role==="commercial"?"Dir. Commerciale":"Directeur"}</div>
-            </div>
-          </div>
-
-          {/* Switch module */}
-          {isPresident&&(
-            <div style={{padding:"10px 10px",borderBottom:"1px solid rgba(184,150,62,0.12)"}}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:3}}>
-                {[{id:"op",label:"Opérat.",icon:"⚙"},{id:"commercial",label:"Com.",icon:"💼"},{id:"rapport",label:"Rapports",icon:"📊"}].map(m=>(
-                  <button key={m.id} onClick={()=>{setModule(m.id);if(isMobile)setSidebarOpen(false);}} style={{padding:"7px 4px",borderRadius:5,border:`1px solid ${module===m.id?GOLD:"rgba(184,150,62,0.2)"}`,background:module===m.id?"rgba(184,150,62,0.18)":"transparent",color:module===m.id?GOLD:"rgba(245,240,234,0.45)",fontSize:9,fontWeight:600,cursor:"pointer",fontFamily:"sans-serif",textAlign:"center",lineHeight:1.4}}>
-                    <div>{m.icon}</div><div>{m.label}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <nav style={{padding:"12px 10px",flex:1,overflowY:"auto"}}>
-            {activeNavItems.map(item=>(
-              <button key={item.id} onClick={()=>{setActiveView(item.id);if(isMobile)setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"11px 14px",borderRadius:6,border:"none",cursor:"pointer",fontFamily:"sans-serif",fontSize:12,fontWeight:600,marginBottom:2,textAlign:"left",background:activeView===item.id?"rgba(184,150,62,0.15)":"transparent",color:activeView===item.id?GOLD:"rgba(245,240,234,0.5)",borderLeft:activeView===item.id?`3px solid ${GOLD}`:"3px solid transparent"}}>
-                <span>{item.icon}</span>{item.label}
-              </button>
-            ))}
-          </nav>
-
-          <div style={{padding:"12px 20px",borderTop:"1px solid rgba(184,150,62,0.15)"}}>
-            {showCommercialModule
-              ?<>
-                <div style={{fontSize:11,color:"rgba(245,240,234,0.4)",marginBottom:2,fontFamily:"sans-serif"}}>{comStats.valides} clients actifs</div>
-                {comStats.revForfaits>0&&<div style={{fontSize:11,color:GOLD_L,marginBottom:2,fontFamily:"sans-serif"}}>📋 {comStats.revForfaits.toLocaleString("fr-FR")} €/mois</div>}
-                {comStats.rappelsUrgents>0&&<div style={{fontSize:11,color:RED,marginBottom:4,fontFamily:"sans-serif"}}>⚠ {comStats.rappelsUrgents} rappel{comStats.rappelsUrgents>1?"s":""}</div>}
-              </>
-              :<>
-                <div style={{fontSize:11,color:"rgba(245,240,234,0.4)",marginBottom:2,fontFamily:"sans-serif"}}>{opStats.active} restaurants actifs</div>
-                {opStats.alerts>0&&<div style={{fontSize:11,color:GOLD,marginBottom:2,fontFamily:"sans-serif"}}>⚠ {opStats.alerts} alerte{opStats.alerts>1?"s":""}</div>}
-              </>
-            }
-            <button onClick={()=>setCurrentUser(null)} style={{fontSize:11,color:"rgba(245,240,234,0.3)",background:"none",border:"none",cursor:"pointer",fontFamily:"sans-serif",padding:0,marginTop:4}}>← Déconnexion</button>
+      {/* ── SIDEBAR (une seule) ── */}
+      <div className={`sidebar${sidebarOpen?" open":""}`}>
+        {/* Logo LND réel */}
+        <div style={{padding:"20px 20px 16px",borderBottom:"1px solid rgba(184,150,62,0.2)"}}>
+          <svg viewBox="0 0 1750.55 537.72" style={{width:"100%",maxHeight:52,display:"block"}} xmlns="http://www.w3.org/2000/svg">
+            <defs><style>{`.ls1{fill:#F5F0EA}.ls2{fill:#B8963E}`}</style></defs>
+            <g>
+              <path className="ls1" d="M1229.98,12.96c-17.77-3.8-34.5-4.11-52.08-3.99-21.81.15-50.25.96-57.61,21.19-3.4,9.36-4.6,19.18-4.61,29.41l-.12,152.74-32.91-.12-.16-166.84c0-9.25-4.69-20.14-10.18-26.52-11.59-13.46-33.14-11.55-38.14-14.57-.84-.51.47-3.66,1.33-4.25h188.25c64.46,1.8,118.52,26.89,155.18,79.84,16.28,24.01,26.85,49.93,34.27,77.99,4.4,17.98,6.64,35.84,7.27,54.52l-55.23-.08c-1.21-26.12-4.97-50.31-12.45-75.01-8.66-29.12-23.24-55.01-43.05-77.99s-48.06-39.54-79.74-46.31Z"/>
+              <path className="ls1" d="M725.38,53.1l.15,158.87h-14.24s.15-72.49.15-72.49l-.29-95.27c-.01-3.87-4.1-8.53-6.65-11.27-23.8-25.61-59.56-25.36-65.37-28.34-.8-.41-.62-2.6-.35-4.58l111.28.03,64.99,74.99,85.98,96.65,36.12,40.57-72.22.09-56.98-65.29-82.57-93.96Z"/>
+              <path className="ls1" d="M755.62,407.86c.06,9.41-1.73,16.8-4.68,24.81-5.53,15.06-9.43,33.83,3.98,37.17.77.19,2.51,1.43,2.81,1.91.39.64-.07,1.72-.93,3.11l-400.81-.07c-1.41,0-1.4-5.22-.05-5.48l15.77-3.02c19.79-3.79,28.69-24.15,29.87-44.25v-104.69s49.3-.14,49.3-.14l.14,91.39c.04,25.97,10.27,44.32,35.62,50.68,13.01,3.27,25.78,4.69,39.29,4.69l85.74.04c30.71.01,60.6-4.2,89.36-15.24,13.1-5.03,24.19-14.45,33.76-24.29l8.46-11.7c2.8-3.88,6.64-5.43,12.38-4.93Z"/>
+              <path className="ls1" d="M1116.13,415.99c.08,17.48,2.12,38.78,16.87,45.36,7.1,3.17,15.24,4.47,23.17,4.91,46.66,2.56,96.63-5.28,132.26-36.75l21.76-22.01c12.37-14.71,21.26-31.29,30.35-48.11,5.38-14.14,9.54-27.45,12.91-42.16l58.77.05c-10.33,53.44-44.94,103.89-93.28,130.49-30.6,16.83-64.11,26.63-99.65,26.71l-132.85.3-33.15-37.05,62.83-21.74Z"/>
+              <path className="ls1" d="M450.97,57.21l-.02,155.08-49.33.04-.23-161.24c-.02-11.79-4.38-23.76-11.01-32.52C377.51,1.56,351.86,9.53,357.86.02l135.7-.02,1.56,3.2c.42.86-1.78,2.53-2.86,2.75l-15.08,3.07c-8.86,1.8-17.1,8.7-20.68,16.92-4.28,9.81-5.52,19.72-5.52,31.28Z"/>
+              <polygon className="ls1" points="1115.51 317.24 1115.66 409.57 1047.37 430.33 1013.77 394.29 943.63 317.4 1018.32 317.23 1082.42 388.8 1082.67 317.38 1115.51 317.24"/>
+              <path className="ls1" d="M724.93,394.8c-.07,7.23-5.48,25.23-9.03,26.19-1.07.29-3.44-.5-4.63-1.22l.05-102.19,13.91-.34.16,30.63-.45,46.94Z"/>
+              <text style={{fill:"#B8963E",fontFamily:"sans-serif",fontSize:67,fontWeight:700,letterSpacing:"0.09em"}} transform="translate(296.47 288.02)">LES NOUVEAUX DIRECTEURS</text>
+            </g>
+            <path className="ls2" d="M1074.94,432.8c-82.98,27.37-166.6,50.49-252.55,68.3-127.92,26.52-270.64,43.31-400.74,34.05-49.47-3.52-97.13-11.35-143.86-25.29-1.57-1.87-.33-2.44,3.72-1.69,82.89,20.13,168.39,21.43,253.94,16.06,160.14-10.06,366.73-53.99,519.8-102.58l92.64-29.41,14.12-4.55c75.22-24.26,148.72-51.86,221.34-82.86,3.09-.87,4.7-.63,2.2,1.8-49.59,24.62-99.08,47.36-150.95,67.31"/>
+          </svg>
+          <div style={{fontSize:8,letterSpacing:3,color:GOLD,textTransform:"uppercase",marginTop:6,fontWeight:700,fontFamily:"sans-serif"}}>
+            {showRapportModule?"Rapports":showCommercialModule?"CRM Commercial":"CRM Opérationnel"}
           </div>
         </div>
-      ))}
+
+        {/* User */}
+        <div style={{padding:"12px 20px",borderBottom:"1px solid rgba(184,150,62,0.12)",display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:32,height:32,borderRadius:"50%",background:GOLD,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:NAVY,flexShrink:0,fontFamily:"sans-serif"}}>{currentUser.avatar}</div>
+          <div>
+            <div style={{fontSize:11,fontWeight:700,color:CREAM,fontFamily:"sans-serif"}}>{currentUser.name}</div>
+            <div style={{fontSize:9,color:GOLD,fontFamily:"sans-serif",letterSpacing:1}}>{currentUser.role==="president"?"Président":currentUser.role==="commercial"?"Dir. Commerciale":"Directeur"}</div>
+          </div>
+          {sidebarOpen&&<button onClick={()=>setSidebarOpen(false)} style={{marginLeft:"auto",background:"none",border:"none",color:"rgba(245,240,234,0.4)",fontSize:18,cursor:"pointer",lineHeight:1}}>✕</button>}
+        </div>
+
+        {/* Switch module */}
+        {isPresident&&(
+          <div style={{padding:"10px 10px",borderBottom:"1px solid rgba(184,150,62,0.12)"}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:3}}>
+              {[{id:"op",label:"Opérat.",icon:"⚙"},{id:"commercial",label:"Com.",icon:"💼"},{id:"rapport",label:"Rapports",icon:"📊"}].map(m=>(
+                <button key={m.id} onClick={()=>{setModule(m.id);setSidebarOpen(false);}} style={{padding:"7px 4px",borderRadius:5,border:`1px solid ${module===m.id?GOLD:"rgba(184,150,62,0.2)"}`,background:module===m.id?"rgba(184,150,62,0.18)":"transparent",color:module===m.id?GOLD:"rgba(245,240,234,0.45)",fontSize:9,fontWeight:600,cursor:"pointer",fontFamily:"sans-serif",textAlign:"center",lineHeight:1.4}}>
+                  <div>{m.icon}</div><div>{m.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <nav style={{padding:"12px 10px",flex:1,overflowY:"auto"}}>
+          {activeNavItems.map(item=>(
+            <button key={item.id} onClick={()=>{setActiveView(item.id);setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"11px 14px",borderRadius:6,border:"none",cursor:"pointer",fontFamily:"sans-serif",fontSize:12,fontWeight:600,marginBottom:2,textAlign:"left",background:activeView===item.id?"rgba(184,150,62,0.15)":"transparent",color:activeView===item.id?GOLD:"rgba(245,240,234,0.5)",borderLeft:activeView===item.id?`3px solid ${GOLD}`:"3px solid transparent"}}>
+              <span>{item.icon}</span>{item.label}
+            </button>
+          ))}
+        </nav>
+
+        <div style={{padding:"12px 20px",borderTop:"1px solid rgba(184,150,62,0.15)"}}>
+          {showCommercialModule
+            ?<>
+              <div style={{fontSize:11,color:"rgba(245,240,234,0.4)",marginBottom:2,fontFamily:"sans-serif"}}>{comStats.valides} clients actifs</div>
+              {comStats.revForfaits>0&&<div style={{fontSize:11,color:GOLD_L,marginBottom:2,fontFamily:"sans-serif"}}>📋 {comStats.revForfaits.toLocaleString("fr-FR")} €/mois</div>}
+              {comStats.rappelsUrgents>0&&<div style={{fontSize:11,color:RED,marginBottom:4,fontFamily:"sans-serif"}}>⚠ {comStats.rappelsUrgents} rappel{comStats.rappelsUrgents>1?"s":""}</div>}
+            </>
+            :<>
+              <div style={{fontSize:11,color:"rgba(245,240,234,0.4)",marginBottom:2,fontFamily:"sans-serif"}}>{opStats.active} restaurants actifs</div>
+              {opStats.alerts>0&&<div style={{fontSize:11,color:GOLD,marginBottom:2,fontFamily:"sans-serif"}}>⚠ {opStats.alerts} alerte{opStats.alerts>1?"s":""}</div>}
+            </>
+          }
+          <button onClick={()=>setCurrentUser(null)} style={{fontSize:11,color:"rgba(245,240,234,0.3)",background:"none",border:"none",cursor:"pointer",fontFamily:"sans-serif",padding:0,marginTop:4}}>← Déconnexion</button>
+        </div>
+      </div>
 
       {/* ── MAIN ── */}
-      <div className="main-content" style={{flex:1,padding:"32px 36px",overflowY:"auto",minWidth:0}}>
+      <div className="main-content">
 
 
         {/* ══════════════ AGENDA ══════════════ */}
