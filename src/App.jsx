@@ -1,5 +1,4 @@
 import { useState, useMemo } from "react";
-import lndLogo from "./assets/lnd-logo.svg";
 
 // ── COULEURS ──────────────────────────────────────────────────────────
 const NAVY = "#1B2A4A";
@@ -34,72 +33,6 @@ function calcAnnuel(months) {
   return {...t,...calcRatios(t)};
 }
 
-// ── CONSTANTES LND (compte d'exploitation du cabinet) ─────────────────
-const EMPTY_MONTH_LND = { ca:0, masseSalariale:0, chargesFixes:0 };
-function emptyMonthsLND() { return Object.fromEntries(MONTHS_OP.map(m=>[m,{...EMPTY_MONTH_LND}])); }
-function calcRatiosLND(d) {
-  const ca=d.ca||0, ms=d.masseSalariale||0, cf=d.chargesFixes||0;
-  const ratioMS=ca>0?(ms/ca)*100:0, ratioCF=ca>0?(cf/ca)*100:0;
-  const ebitda=ca-ms-cf, tauxEBITDA=ca>0?(ebitda/ca)*100:0;
-  return {ratioMS,ratioCF,ebitda,tauxEBITDA};
-}
-function calcAnnuelLND(months) {
-  const t={ca:0,masseSalariale:0,chargesFixes:0};
-  MONTHS_OP.forEach(m=>{const d=months[m]||EMPTY_MONTH_LND;Object.keys(t).forEach(k=>t[k]+=d[k]||0);});
-  return {...t,...calcRatiosLND(t)};
-}
-
-// ── PROJECTIONS (mois en cours + M+1, basées sur la tendance des 3 derniers mois réels) ──
-function projectMonths(monthsObj, fields) {
-  const filledIdx = MONTHS_OP.map((m,i)=>i).filter(i=>((monthsObj[MONTHS_OP[i]]||{}).ca||0)>0);
-  if(filledIdx.length===0) return null;
-  const lastIdx = filledIdx[filledIdx.length-1];
-  const currentIdx = lastIdx+1;
-  if(currentIdx>11) return null;
-  const nextIdx = currentIdx+1<=11?currentIdx+1:null;
-  const recentIdx = filledIdx.slice(-3);
-  const rates={};
-  fields.forEach(f=>{
-    const vals = recentIdx.map(i=>(monthsObj[MONTHS_OP[i]]||{})[f]||0);
-    let totalRate=0,count=0;
-    for(let k=1;k<vals.length;k++){ if(vals[k-1]>0){ totalRate+=(vals[k]/vals[k-1]-1); count++; } }
-    rates[f]=count>0?totalRate/count:0;
-  });
-  const lastVals={}; fields.forEach(f=>{lastVals[f]=(monthsObj[MONTHS_OP[lastIdx]]||{})[f]||0;});
-  const currentProj={}; fields.forEach(f=>{currentProj[f]=Math.max(0,lastVals[f]*(1+rates[f]));});
-  let nextProj=null;
-  if(nextIdx!=null){ nextProj={}; fields.forEach(f=>{nextProj[f]=Math.max(0,currentProj[f]*(1+rates[f]));}); }
-  return {currentIdx,nextIdx,currentLabel:MONTH_LABELS[currentIdx],nextLabel:nextIdx!=null?MONTH_LABELS[nextIdx]:null,currentProj,nextProj};
-}
-
-function ProjectionPanel({proj,calcRatiosFn,items}) {
-  if(!proj) return null;
-  const curRatios=calcRatiosFn(proj.currentProj);
-  const nextRatios=proj.nextProj?calcRatiosFn(proj.nextProj):null;
-  const card=(label,vals,ratios)=>(
-    <div style={{background:"#fffbe8",border:`1px dashed ${GOLD}`,borderRadius:8,padding:"16px 18px"}}>
-      <div style={{fontSize:11,fontWeight:700,color:GOLD,marginBottom:10,fontFamily:"sans-serif"}}>{label}</div>
-      <div style={{display:"grid",gridTemplateColumns:`repeat(${items.length},1fr)`,gap:8}}>
-        {items.map(it=>(
-          <div key={it.label}>
-            <div style={{fontSize:9,color:"#999",textTransform:"uppercase",letterSpacing:1,fontFamily:"sans-serif",marginBottom:3}}>{it.label}</div>
-            <div style={{fontSize:15,fontWeight:700,fontStyle:"italic",color:NAVY}}>≈ {it.fmt(it.calc(vals,ratios))}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-  return (
-    <div style={{marginTop:22}}>
-      <div style={{fontSize:9,color:GOLD,letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:10,fontFamily:"sans-serif"}}>≈ Projections (tendance des 3 derniers mois)</div>
-      <div style={{display:"grid",gridTemplateColumns:proj.nextProj?"1fr 1fr":"1fr",gap:14}}>
-        {card(`Mois en cours — ${proj.currentLabel} (estimé)`,proj.currentProj,curRatios)}
-        {proj.nextProj&&card(`M+1 — ${proj.nextLabel} (projeté)`,proj.nextProj,nextRatios)}
-      </div>
-    </div>
-  );
-}
-
 // ── CONSTANTES COMMERCIAL ─────────────────────────────────────────────
 const STAGES = ["Prospect","Contacté","Intéressé","Pas intéressé","Négo en cours","Validé","À relancer"];
 const STAGE_STYLE = {
@@ -132,41 +65,16 @@ const FORFAITS = [
 
 // ── DONNÉES INITIALES ─────────────────────────────────────────────────
 const USERS_ALL = [
-  {id:"president",email:"president@lnd.fr",password:"lnd2024",role:"president",name:"Chris Kipa",avatar:"CK"},
-  {id:"dir1",email:"marc@lnd.fr",password:"marc123",role:"directeur",name:"Marc Fontaine",avatar:"MF",salaire:4200},
-  {id:"dir2",email:"sophie@lnd.fr",password:"sophie123",role:"directeur",name:"Sophie Renard",avatar:"SR",salaire:3900},
-  {id:"caroline",email:"caroline@lnd.fr",password:"lnd-commercial",role:"commercial",name:"Caroline Deneux",avatar:"CD",salaire:3600},
+  {id:"president",email:"hubert@lesnouveauxdirecteurs.com",password:"Hayden10@",role:"president",name:"Hubert Deneux",avatar:"HD"},
+  {id:"caroline",email:"caroline@lesnouveauxdirecteurs.com",password:"Vadim12@",role:"commercial",name:"Caroline Deneux",avatar:"CD"},
 ];
 
-const INIT_RESTAURANTS_OP = [
-  {id:1,directorId:"dir1",name:"Brasserie Le Central",contact:"Marc Fontaine",email:"marc@lecentral.fr",phone:"06 12 34 56 78",caisse:"Lightspeed",status:"actif",stage:"Suivi actif",since:"2024-03",employees:14,
-    months:{jan:{ca:38200,couverts:1820,tickets:912,masseSalariale:20000,coutsMatieres:11000,chargesFixes:4500},feb:{ca:41500,couverts:1950,tickets:980,masseSalariale:21000,coutsMatieres:12000,chargesFixes:4500},mar:{ca:44800,couverts:2100,tickets:1050,masseSalariale:23000,coutsMatieres:13000,chargesFixes:4500},apr:{ca:39600,couverts:1870,tickets:935,masseSalariale:23000,coutsMatieres:11500,chargesFixes:4500},may:{ca:47200,couverts:2240,tickets:1120,masseSalariale:22400,coutsMatieres:13500,chargesFixes:4500},jun:EMPTY_MONTH,jul:EMPTY_MONTH,aug:EMPTY_MONTH,sep:EMPTY_MONTH,oct:EMPTY_MONTH,nov:EMPTY_MONTH,dec:EMPTY_MONTH},
-    notes:[{date:"2024-05-20",text:"RDV mensuel — problème stocks semaine 18."}],tasks:[{id:1,text:"Analyser les coûts matières Q1",done:false,due:"2024-06-01"}],alerts:[]},
-  {id:2,directorId:"dir2",name:"Chez Paulette",contact:"Sophie Renard",email:"sophie@chezpaulette.fr",phone:"06 98 76 54 32",caisse:"L'Addition",status:"actif",stage:"Onboarding",since:"2024-05",employees:7,
-    months:{jan:EMPTY_MONTH,feb:EMPTY_MONTH,mar:EMPTY_MONTH,apr:EMPTY_MONTH,may:{ca:19800,couverts:940,tickets:470,masseSalariale:9800,coutsMatieres:6000,chargesFixes:2800},jun:EMPTY_MONTH,jul:EMPTY_MONTH,aug:EMPTY_MONTH,sep:EMPTY_MONTH,oct:EMPTY_MONTH,nov:EMPTY_MONTH,dec:EMPTY_MONTH},
-    notes:[{date:"2024-05-18",text:"Premier audit — dépenses fournisseurs mal tracées."}],tasks:[{id:3,text:"Paramétrer accès caisse",done:false,due:"2024-05-30"}],alerts:[]},
-];
+const INIT_RESTAURANTS_OP = [];
 
-const INIT_PROSPECTS = [
-  {id:101,nom:"Brasserie Le Central",contact:"Marc Fontaine",email:"marc@lecentral.fr",tel:"06 12 34 56 78",adresse:"12 rue de Rivoli",ville:"Paris",region:"Île-de-France",cp:"75001",ca:480000,salaries:14,stage:"Validé",notes:"Client fidèle depuis mars 2024.",rappels:[{id:201,date:"2024-06-10",note:"Bilan trimestriel"}],caHistory:[32000,36000,38000,41000,44000,47000,45000,0,0,0,0,0],forfaits:[{optionId:"dir-tp",dateDebut:"2024-03-01",notes:""},{optionId:"pil-complet",dateDebut:"2024-03-01",notes:""}]},
-  {id:102,nom:"Chez Paulette",contact:"Sophie Renard",email:"sophie@chezpaulette.fr",tel:"06 98 76 54 32",adresse:"5 rue du Commerce",ville:"Nanterre",region:"Île-de-France",cp:"92000",ca:220000,salaries:7,stage:"Validé",notes:"Onboarding en cours.",rappels:[{id:202,date:"2024-06-05",note:"Paramétrage caisse"}],caHistory:[0,0,0,0,19800,0,0,0,0,0,0,0],forfaits:[{optionId:"dir-pp",dateDebut:"2024-05-01",notes:""}]},
-  {id:103,nom:"Le Fumoir Noir",contact:"Antoine Lebas",email:"a.lebas@lefumoir.fr",tel:"07 11 22 33 44",adresse:"8 boulevard Haussmann",ville:"Paris",region:"Île-de-France",cp:"75009",ca:390000,salaries:10,stage:"Négo en cours",notes:"Proposition envoyée le 10/05.",rappels:[{id:203,date:"2024-05-28",note:"Relance téléphonique"}],caHistory:[28000,31000,29500,33000,35000,0,0,0,0,0,0,0],forfaits:[]},
-  {id:104,nom:"La Terrasse Dorée",contact:"Isabelle Morin",email:"isabelle@laterrassedoree.fr",tel:"06 55 44 33 22",adresse:"3 allée des Roses",ville:"Lyon",region:"Auvergne-Rhône-Alpes",cp:"69002",ca:560000,salaries:12,stage:"Intéressé",notes:"Réunion fin juin.",rappels:[{id:204,date:"2024-06-20",note:"Réunion présentation"}],caHistory:[42000,44000,48000,46000,52000,0,0,0,0,0,0,0],forfaits:[]},
-  {id:105,nom:"L'Atelier du Chef",contact:"Nathalie Bouvier",email:"nbouvier@atelierduchef.fr",tel:"06 23 45 67 89",adresse:"17 rue des Arts",ville:"Bordeaux",region:"Nouvelle-Aquitaine",cp:"33000",ca:0,salaries:15,stage:"Prospect",notes:"À contacter.",rappels:[],caHistory:Array(12).fill(0),forfaits:[]},
-  {id:106,nom:"Le Grand Bistrot",contact:"Camille Durand",email:"c.durand@legrandbistrot.fr",tel:"07 55 66 77 88",adresse:"9 rue de la Paix",ville:"Nice",region:"Provence-Alpes-Côte d'Azur",cp:"06000",ca:720000,salaries:20,stage:"À relancer",notes:"Ouverture 2e restaurant.",rappels:[{id:205,date:"2024-06-15",note:"Présenter offre multi-sites"}],caHistory:[55000,58000,60000,62000,65000,0,0,0,0,0,0,0],forfaits:[]},
-];
-
-const INIT_LND_MONTHS = {
-  jan:{ca:5200,masseSalariale:11700,chargesFixes:1200},
-  feb:{ca:6100,masseSalariale:11700,chargesFixes:1200},
-  mar:{ca:6900,masseSalariale:11700,chargesFixes:1300},
-  apr:{ca:7800,masseSalariale:11700,chargesFixes:1300},
-  may:{ca:9100,masseSalariale:11700,chargesFixes:1400},
-  jun:{...EMPTY_MONTH_LND},jul:{...EMPTY_MONTH_LND},aug:{...EMPTY_MONTH_LND},sep:{...EMPTY_MONTH_LND},oct:{...EMPTY_MONTH_LND},nov:{...EMPTY_MONTH_LND},dec:{...EMPTY_MONTH_LND},
-};
+const INIT_PROSPECTS = [];
 
 // ── UTILS ─────────────────────────────────────────────────────────────
-const fmtEur = n => {if(n===0)return"—";const a=Math.abs(n),s=n<0?"-":"";return a>=1000000?`${s}${(a/1000000).toFixed(2)}M€`:a>=1000?`${s}${(a/1000).toFixed(0)}k€`:`${s}${Math.round(a)}€`;};
+const fmtEur = n => n>=1000000?`${(n/1000000).toFixed(2)}M€`:n>=1000?`${(n/1000).toFixed(0)}k€`:n>0?`${n}€`:"—";
 const fmtNum = n => n>=1000?`${(n/1000).toFixed(1)}k`:`${Math.round(n)}`;
 const fmtPct = n => `${n.toFixed(1)}%`;
 const fmtDate = d => d?new Date(d).toLocaleDateString("fr-FR",{day:"2-digit",month:"short",year:"numeric"}):"";
@@ -236,7 +144,9 @@ function LoginScreen({onLogin}) {
     <div style={{minHeight:"100vh",background:NAVY,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Georgia,serif"}}>
       <div style={{width:420,background:WHITE,borderRadius:12,padding:"48px 44px",boxShadow:"0 40px 100px rgba(0,0,0,0.4)",borderTop:`4px solid ${GOLD}`}}>
         <div style={{textAlign:"center",marginBottom:36}}>
-          <img src={lndLogo} alt="LND — Les Nouveaux Directeurs" style={{width:260,height:"auto",display:"block",margin:"0 auto"}}/>
+          <div style={{fontSize:52,fontWeight:700,color:NAVY,letterSpacing:-2,lineHeight:1,fontFamily:"Georgia,serif"}}>LND</div>
+          <div style={{fontSize:10,letterSpacing:5,color:GOLD,textTransform:"uppercase",fontWeight:700,marginTop:6,fontFamily:"sans-serif"}}>Les Nouveaux Directeurs</div>
+          <div style={{width:40,height:2,background:GOLD,margin:"14px auto 0"}}/>
         </div>
         {[{l:"Email",v:email,s:setEmail,p:"votre@lnd.fr",t:"text"},{l:"Mot de passe",v:pwd,s:setPwd,p:"••••••••",t:"password"}].map(f=>(
           <div key={f.l} style={{marginBottom:14}}>
@@ -246,12 +156,6 @@ function LoginScreen({onLogin}) {
         ))}
         {err&&<div style={{background:"#fdf0f0",border:"1px solid #f5c6c6",borderRadius:6,padding:"10px 14px",fontSize:13,color:RED,marginBottom:16,fontFamily:"sans-serif"}}>{err}</div>}
         <button onClick={handle} style={{width:"100%",background:NAVY,color:CREAM,border:`1px solid ${GOLD}`,borderRadius:6,padding:14,fontSize:12,fontWeight:700,cursor:"pointer",letterSpacing:2,textTransform:"uppercase",fontFamily:"sans-serif"}}>Se connecter</button>
-        <div style={{marginTop:20,padding:14,background:CREAM,borderRadius:6,fontSize:11,color:"#888",lineHeight:1.9,fontFamily:"sans-serif"}}>
-          <strong style={{color:NAVY}}>Accès démo :</strong><br/>
-          Président : president@lnd.fr / lnd2024<br/>
-          Commercial : caroline@lnd.fr / lnd-commercial<br/>
-          Directeur 1 : marc@lnd.fr / marc123
-        </div>
       </div>
     </div>
   );
@@ -356,12 +260,6 @@ function CompteExploitation({restaurant}) {
   ];
   function getVal(row,d){if(row.calc)return row.calc(d);return d[row.key]||0;}
   const filled=MONTHS_OP.filter(m=>(restaurant.months[m]||EMPTY_MONTH).ca>0);
-  const proj=projectMonths(restaurant.months,["ca","masseSalariale","coutsMatieres","chargesFixes"]);
-  const projItems=[
-    {label:"CA",fmt:fmtEur,calc:v=>v.ca},
-    {label:"EBE",fmt:fmtEur,calc:(v,r)=>r.ebe},
-    {label:"Taux EBE",fmt:fmtPct,calc:(v,r)=>r.tauxEBE},
-  ];
   return (
     <div>
       <div style={{overflowX:"auto"}}>
@@ -401,145 +299,6 @@ function CompteExploitation({restaurant}) {
               <div style={{fontSize:19,fontWeight:700,color:col}}>{r.fmt(v)}</div>
             </div>
           );})}
-        </div>
-      </div>
-      <ProjectionPanel proj={proj} calcRatiosFn={calcRatios} items={projItems}/>
-    </div>
-  );
-}
-
-// ── COMPTE D'EXPLOITATION LND (cabinet) ────────────────────────────────
-function CompteExploitationLND({lndMonths}) {
-  const annuel=calcAnnuelLND(lndMonths);
-  const rows=[
-    {label:"Chiffre d'affaires LND",key:"ca",fmt:fmtEur,bold:true,border:true},
-    {label:"Masse salariale LND",key:"masseSalariale",fmt:fmtEur,sub:true},
-    {label:"Charges fixes LND",key:"chargesFixes",fmt:fmtEur,sub:true},
-    {label:"EBITDA LND",calc:d=>d.ca-d.masseSalariale-d.chargesFixes,fmt:fmtEur,bold:true,color:d=>d.ca-d.masseSalariale-d.chargesFixes>0?GREEN:RED,border:true},
-  ];
-  const ratioRows=[
-    {label:"Ratio masse sal.",calc:d=>d.ca>0?(d.masseSalariale/d.ca*100):0,fmt:fmtPct,color:v=>ratioColor(v,{bad:90,warn:75})},
-    {label:"Ratio charges fixes",calc:d=>d.ca>0?(d.chargesFixes/d.ca*100):0,fmt:fmtPct,color:v=>ratioColor(v,{bad:25,warn:15})},
-    {label:"Taux EBITDA",calc:d=>d.ca>0?((d.ca-d.masseSalariale-d.chargesFixes)/d.ca*100):0,fmt:fmtPct,color:v=>v>10?GREEN:v>0?ORANGE:RED},
-  ];
-  function getVal(row,d){if(row.calc)return row.calc(d);return d[row.key]||0;}
-  const filled=MONTHS_OP.filter(m=>(lndMonths[m]||EMPTY_MONTH_LND).ca>0);
-  const proj=projectMonths(lndMonths,["ca","masseSalariale","chargesFixes"]);
-  const projItems=[
-    {label:"CA LND",fmt:fmtEur,calc:v=>v.ca},
-    {label:"EBITDA LND",fmt:fmtEur,calc:(v,r)=>r.ebitda},
-    {label:"Taux EBITDA",fmt:fmtPct,calc:(v,r)=>r.tauxEBITDA},
-  ];
-  return (
-    <div>
-      <div style={{overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",minWidth:900}}>
-          <thead>
-            <tr style={{background:NAVY}}>
-              <th style={{padding:"12px 16px",textAlign:"left",fontSize:10,fontWeight:700,color:GOLD,textTransform:"uppercase",letterSpacing:1.5,minWidth:160}}>Indicateur</th>
-              {MONTHS_OP.map((m,i)=>(
-                <th key={m} style={{padding:"12px 8px",textAlign:"right",fontSize:10,fontWeight:700,color:filled.includes(m)?GOLD:"rgba(184,150,62,0.3)",textTransform:"uppercase",letterSpacing:1}}>{MONTH_LABELS[i]}</th>
-              ))}
-              <th style={{padding:"12px 10px",textAlign:"right",fontSize:10,fontWeight:700,color:"#fff",textTransform:"uppercase",letterSpacing:1,background:NAVY2}}>TOTAL</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(row=>(
-              <tr key={row.label} style={{borderBottom:row.border?`2px solid ${CREAM}`:`1px solid #f5f3f0`,background:row.bold?"#fafaf8":WHITE}}>
-                <td style={{padding:"11px 16px",fontSize:13,fontWeight:row.bold?700:400,color:row.sub?"#888":NAVY,paddingLeft:row.sub?28:16}}>{row.label}</td>
-                {MONTHS_OP.map(m=>{
-                  const d=lndMonths[m]||EMPTY_MONTH_LND;
-                  const v=getVal(row,d);
-                  const hasData=d.ca>0;
-                  const col=row.color?row.color(d):(row.bold?NAVY:"#555");
-                  return <td key={m} style={{padding:"11px 8px",textAlign:"right",fontSize:12,fontWeight:row.bold?700:400,color:hasData?col:"#ddd"}}>{hasData?row.fmt(v):"—"}</td>;
-                })}
-                <td style={{padding:"11px 10px",textAlign:"right",fontSize:12,fontWeight:700,background:"#f0ede8",color:row.color?row.color(annuel):NAVY}}>{row.fmt(getVal(row,annuel))}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div style={{marginTop:22,background:NAVY,borderRadius:8,padding:"18px 22px"}}>
-        <div style={{fontSize:9,color:GOLD,letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:14}}>Ratios clés annuels — LND</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-          {ratioRows.map(r=>{const v=getVal(r,annuel);const col=r.color?r.color(v):CREAM;return(
-            <div key={r.label} style={{background:"rgba(255,255,255,0.06)",borderRadius:6,padding:"13px"}}>
-              <div style={{fontSize:9,color:"rgba(245,240,234,0.5)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:5}}>{r.label}</div>
-              <div style={{fontSize:19,fontWeight:700,color:col}}>{r.fmt(v)}</div>
-            </div>
-          );})}
-        </div>
-      </div>
-      <ProjectionPanel proj={proj} calcRatiosFn={calcRatiosLND} items={projItems}/>
-    </div>
-  );
-}
-
-function SaisieLNDModal({lndMonths,onSave,onClose}) {
-  const [selMonth,setSelMonth]=useState(MONTHS_OP[new Date().getMonth()]);
-  const [data,setData]=useState({...(lndMonths[selMonth]||EMPTY_MONTH_LND)});
-  function switchMonth(m){setSelMonth(m);setData({...(lndMonths[m]||EMPTY_MONTH_LND)});}
-  const ratios=calcRatiosLND(data);
-  const fields=[
-    {key:"ca",label:"Chiffre d'affaires LND (€)",icon:"€"},
-    {key:"masseSalariale",label:"Masse salariale LND (€)",icon:"👥"},
-    {key:"chargesFixes",label:"Charges fixes LND (€)",icon:"🏢"},
-  ];
-  const ratioItems=[
-    {label:"Ratio masse sal.",value:fmtPct(ratios.ratioMS),hint:"Salaires / CA LND",color:ratioColor(ratios.ratioMS,{bad:90,warn:75})},
-    {label:"Ratio charges fixes",value:fmtPct(ratios.ratioCF),hint:"Charges / CA LND",color:ratioColor(ratios.ratioCF,{bad:25,warn:15})},
-    {label:"EBITDA",value:fmtEur(ratios.ebitda),hint:fmtPct(ratios.tauxEBITDA)+" du CA",color:ratios.ebitda>0?GREEN:RED},
-  ];
-  const iS={width:"100%",padding:"10px 13px",borderRadius:5,border:"1px solid rgba(27,42,74,0.18)",fontSize:13,outline:"none",color:NAVY,background:WHITE,boxSizing:"border-box"};
-  const lS={fontSize:9,letterSpacing:2.5,textTransform:"uppercase",color:GOLD,fontWeight:700,display:"block",marginBottom:5};
-  return (
-    <div style={{position:"fixed",inset:0,background:"rgba(17,30,53,0.75)",zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",padding:20,backdropFilter:"blur(4px)"}}>
-      <div style={{background:WHITE,borderRadius:12,width:"100%",maxWidth:640,maxHeight:"90vh",overflow:"auto",boxShadow:"0 40px 100px rgba(0,0,0,0.35)",borderTop:`4px solid ${GOLD}`}}>
-        <div style={{padding:"24px 32px 0",borderBottom:`1px solid ${CREAM}`,position:"sticky",top:0,background:WHITE,zIndex:10}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
-            <div>
-              <div style={{fontSize:9,color:GOLD,letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:4}}>Saisie des données</div>
-              <h2 style={{fontSize:18,fontWeight:700,margin:0,color:NAVY}}>Compte d'exploitation LND</h2>
-            </div>
-            <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#aaa"}}>✕</button>
-          </div>
-          <div style={{display:"flex",gap:3,overflowX:"auto",paddingBottom:0,marginBottom:-1}}>
-            {MONTHS_OP.map((m,i)=>{
-              const hasData=(lndMonths[m]||EMPTY_MONTH_LND).ca>0;
-              return <button key={m} onClick={()=>switchMonth(m)} style={{padding:"7px 10px",borderRadius:"6px 6px 0 0",border:`1px solid ${selMonth===m?GOLD:CREAM}`,borderBottom:selMonth===m?"1px solid #fff":`1px solid ${CREAM}`,background:selMonth===m?WHITE:hasData?"#f0f7f0":CREAM,color:selMonth===m?NAVY:hasData?GREEN:"#aaa",fontSize:10,fontWeight:selMonth===m?700:400,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
-                {MONTH_LABELS[i]}{hasData?" ✓":""}
-              </button>;
-            })}
-          </div>
-        </div>
-        <div style={{padding:"22px 32px"}}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr",gap:14,marginBottom:24}}>
-            {fields.map(f=>(
-              <div key={f.key}>
-                <label style={lS}>{f.icon} {f.label}</label>
-                <input type="number" min="0" value={data[f.key]||""} onChange={e=>setData({...data,[f.key]:parseFloat(e.target.value)||0})} placeholder="0" style={{...iS,fontSize:15,fontWeight:600}}/>
-              </div>
-            ))}
-          </div>
-          <div style={{background:NAVY,borderRadius:8,padding:"18px 22px",marginBottom:22}}>
-            <div style={{fontSize:9,color:GOLD,letterSpacing:2,textTransform:"uppercase",fontWeight:700,marginBottom:14}}>⚡ Ratios calculés automatiquement</div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-              {ratioItems.map(r=>(
-                <div key={r.label} style={{background:"rgba(255,255,255,0.06)",borderRadius:6,padding:"11px 13px"}}>
-                  <div style={{fontSize:9,color:"rgba(245,240,234,0.5)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:4}}>{r.label}</div>
-                  <div style={{fontSize:17,fontWeight:700,color:r.color||CREAM}}>{r.value}</div>
-                  <div style={{fontSize:10,color:"rgba(245,240,234,0.35)",marginTop:2}}>{r.hint}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div style={{display:"flex",gap:10}}>
-            <button onClick={()=>{onSave(selMonth,data);onClose();}} style={{flex:1,background:NAVY,color:CREAM,border:`1px solid ${GOLD}`,borderRadius:6,padding:13,fontSize:12,fontWeight:700,cursor:"pointer",letterSpacing:1.5,textTransform:"uppercase"}}>
-              Enregistrer {MONTH_LABELS[MONTHS_OP.indexOf(selMonth)]}
-            </button>
-            <button onClick={onClose} style={{flex:1,background:CREAM,color:NAVY,border:"1px solid rgba(27,42,74,0.2)",borderRadius:6,padding:13,fontSize:12,cursor:"pointer"}}>Annuler</button>
-          </div>
         </div>
       </div>
     </div>
@@ -774,20 +533,19 @@ function KPICard({label, value, sub, trend, accent=GOLD, chart, icon}) {
   );
 }
 
-function RapportSection({title, icon, action, children}) {
+function RapportSection({title, icon, children}) {
   return (
     <div style={{marginBottom:36}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18,paddingBottom:12,borderBottom:`1px solid ${CREAM}`}}>
         <span style={{fontSize:20}}>{icon}</span>
-        <div style={{fontSize:13,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",color:NAVY,fontFamily:"sans-serif",flex:1}}>{title}</div>
-        {action}
+        <div style={{fontSize:13,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",color:NAVY,fontFamily:"sans-serif"}}>{title}</div>
       </div>
       {children}
     </div>
   );
 }
 
-function ModuleRapports({restaurants, prospects, users, periode, lndMonths, onOpenSaisieLND}) {
+function ModuleRapports({restaurants, prospects, users, periode}) {
   const directors = users.filter(u=>u.role==="directeur");
   const MONTHS_OP_R = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
   const MONTH_LABELS_R = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
@@ -846,19 +604,9 @@ function ModuleRapports({restaurants, prospects, users, periode, lndMonths, onOp
     dir:users.find(u=>u.id===r.directorId)?.name||"—",
   }));
 
-  const fE=n=>{if(n===0)return"—";const a=Math.abs(n),s=n<0?"-":"";return a>=1000000?`${s}${(a/1000000).toFixed(2)}M€`:a>=1000?`${s}${(a/1000).toFixed(0)}k€`:`${s}${Math.round(a)}€`;};
+  const fE=n=>n>=1000000?`${(n/1000000).toFixed(2)}M€`:n>=1000?`${(n/1000).toFixed(0)}k€`:n>0?`${n}€`:"—";
   const fP=n=>`${n.toFixed(1)}%`;
   const rC=(v,b,w)=>v===0?"#aaa":v>b?RED:v>w?ORANGE:GREEN;
-
-  const equipeLND = users.filter(u=>u.role==="directeur"||u.role==="commercial");
-  const sumLND = (field) => periodeMonths.reduce((s,m)=>s+((lndMonths[m]||EMPTY_MONTH_LND)[field]||0),0);
-  const lndCA = sumLND("ca");
-  const lndMasseSalariale = sumLND("masseSalariale");
-  const lndChargesFixes = sumLND("chargesFixes");
-  const lndEBITDA = lndCA - lndMasseSalariale - lndChargesFixes;
-  const tauxEBITDALND = lndCA>0?(lndEBITDA/lndCA*100):0;
-  const ratioMSLND = lndCA>0?(lndMasseSalariale/lndCA*100):0;
-  const ratioCFLND = lndCA>0?(lndChargesFixes/lndCA*100):0;
 
   return (
     <div>
@@ -1065,52 +813,6 @@ function ModuleRapports({restaurants, prospects, users, periode, lndMonths, onOp
         </div>
       </RapportSection>
 
-      {/* PERFORMANCE LND */}
-      <RapportSection title="Performance LND" icon="🏛" action={
-        <button onClick={onOpenSaisieLND} style={{background:NAVY,color:CREAM,border:`1px solid ${GOLD}`,borderRadius:5,padding:"7px 14px",fontSize:10,fontWeight:700,cursor:"pointer",letterSpacing:1,textTransform:"uppercase",fontFamily:"sans-serif",whiteSpace:"nowrap"}}>✏ Saisir les chiffres LND</button>
-      }>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}}>
-          <KPICard label="CA LND (récurrent)" value={fE(lndCA)} sub={`≈ ${(lndCA*12/1000).toFixed(0)}k€/an`} accent={GOLD} icon="€"/>
-          <KPICard label="Masse salariale LND" value={fE(lndMasseSalariale)} sub={`${fP(ratioMSLND)} du CA LND`} accent={rC(ratioMSLND,90,75)} icon="👥"/>
-          <KPICard label="Charges fixes LND" value={fE(lndChargesFixes)} sub={`${fP(ratioCFLND)} du CA LND`} accent={rC(ratioCFLND,25,15)} icon="🏢"/>
-          <KPICard label="EBITDA LND" value={fE(lndEBITDA)} sub={`${fP(tauxEBITDALND)} du CA LND`} accent={lndEBITDA>0?GREEN:RED} icon="📈"/>
-        </div>
-        <div style={{marginBottom:24}}>
-          <div style={{fontSize:11,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",color:NAVY,marginBottom:14,fontFamily:"sans-serif"}}>Compte d'exploitation LND</div>
-          <CompteExploitationLND lndMonths={lndMonths}/>
-        </div>
-        <div style={{background:WHITE,borderRadius:10,overflow:"hidden",boxShadow:"0 2px 16px rgba(27,42,74,0.07)"}}>
-          <div style={{padding:"14px 18px",borderBottom:`1px solid ${CREAM}`,fontSize:11,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",color:NAVY,fontFamily:"sans-serif"}}>Équipe LND</div>
-          <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}>
-              <thead>
-                <tr style={{background:NAVY}}>
-                  {["Collaborateur","Rôle","Salaire LND/mois","Restaurants gérés","CA clients géré"].map(h=>(
-                    <th key={h} style={{padding:"11px 14px",textAlign:"left",fontSize:9,fontWeight:700,color:GOLD,textTransform:"uppercase",letterSpacing:1.5,fontFamily:"sans-serif",whiteSpace:"nowrap"}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {equipeLND.map((u,i)=>(
-                  <tr key={u.id} style={{borderBottom:`1px solid ${CREAM}`,background:i%2===0?WHITE:"#fdfcfa"}}>
-                    <td style={{padding:"11px 14px",fontWeight:700,fontSize:13}}>{u.name}</td>
-                    <td style={{padding:"11px 14px",fontSize:12,color:"#777",fontFamily:"sans-serif",textTransform:"capitalize"}}>{u.role}</td>
-                    <td style={{padding:"11px 14px",fontWeight:700,color:NAVY,fontFamily:"'Cormorant Garamond',serif",fontSize:15}}>{fE(u.salaire||0)}</td>
-                    <td style={{padding:"11px 14px",fontSize:12,color:"#777",fontFamily:"sans-serif"}}>{u.role==="directeur"?restaurants.filter(r=>r.directorId===u.id&&r.status==="actif").length:"—"}</td>
-                    <td style={{padding:"11px 14px",fontWeight:700,color:GOLD,fontFamily:"sans-serif",fontSize:12}}>{u.role==="directeur"?fE(restaurants.filter(r=>r.directorId===u.id&&r.status==="actif").reduce((s,r)=>s+sumCA(r),0)):"—"}</td>
-                  </tr>
-                ))}
-                <tr style={{background:NAVY}}>
-                  <td colSpan={2} style={{padding:"12px 14px",fontSize:10,fontWeight:700,color:GOLD,textTransform:"uppercase",letterSpacing:1.5,fontFamily:"sans-serif"}}>TOTAL</td>
-                  <td style={{padding:"12px 14px",fontWeight:700,color:CREAM,fontFamily:"'Cormorant Garamond',serif",fontSize:15}}>{fE(equipeLND.reduce((s,u)=>s+(u.salaire||0),0))}</td>
-                  <td colSpan={2} style={{padding:"12px 14px",color:GOLD,fontSize:11}}>—</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </RapportSection>
-
       {/* KPIs CONSULTING */}
       <RapportSection title="KPIs Consulting LND" icon="🎯">
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16}}>
@@ -1191,15 +893,13 @@ export default function LNDUnifie() {
   // OPÉRATIONNEL state
   const [users,setUsers]=useState(USERS_ALL);
   const [restaurants,setRestaurants]=useState(INIT_RESTAURANTS_OP);
-  const [lndMonths,setLndMonths]=useState(INIT_LND_MONTHS);
-  const [showSaisieLND,setShowSaisieLND]=useState(false);
   const [opView,setOpView]=useState("dashboard");
   const [opSelected,setOpSelected]=useState(null);
   const [opTab,setOpTab]=useState("exploitation");
   const [showSaisie,setShowSaisie]=useState(false);
   const [showAddDir,setShowAddDir]=useState(false);
   const [showAddResto,setShowAddResto]=useState(false);
-  const [newDir,setNewDir]=useState({name:"",email:"",password:"",salaire:""});
+  const [newDir,setNewDir]=useState({name:"",email:"",password:""});
   const [newResto,setNewResto]=useState({name:"",contact:"",email:"",phone:"",caisse:"Lightspeed",status:"actif",stage:"Onboarding",directorId:""});
   const [opNote,setOpNote]=useState("");
   const [opTask,setOpTask]=useState("");
@@ -1261,7 +961,6 @@ export default function LNDUnifie() {
     if(ratios.tauxEBE<5&&data.ca>0) alerts.push(`EBE faible : ${fmtPct(ratios.tauxEBE)}`);
     updateResto({...opSelected,months:{...opSelected.months,[month]:data},alerts});
   }
-  function saveLNDMonthData(month,data) { setLndMonths(prev=>({...prev,[month]:data})); }
   function addNote(){if(!opNote.trim())return;updateResto({...opSelected,notes:[{date:new Date().toISOString().slice(0,10),text:opNote},...opSelected.notes]});setOpNote("");setShowOpNote(false);}
   function addTask(){if(!opTask.trim())return;updateResto({...opSelected,tasks:[...opSelected.tasks,{id:Date.now(),text:opTask,done:false,due:""}]});setOpTask("");setShowOpTask(false);}
   function toggleTask(id){updateResto({...opSelected,tasks:opSelected.tasks.map(t=>t.id===id?{...t,done:!t.done}:t)});}
@@ -1366,12 +1065,7 @@ export default function LNDUnifie() {
             prospects={prospects}
             users={users}
             periode={periodeRapport}
-            lndMonths={lndMonths}
-            onOpenSaisieLND={()=>setShowSaisieLND(true)}
           />
-        )}
-        {showSaisieLND&&(
-          <SaisieLNDModal lndMonths={lndMonths} onSave={saveLNDMonthData} onClose={()=>setShowSaisieLND(false)}/>
         )}
 
         {/* ══════════════ MODULE OPÉRATIONNEL ══════════════ */}
@@ -1488,10 +1182,6 @@ export default function LNDUnifie() {
                             <div style={{fontSize:17,fontWeight:700}}>{f.v}</div>
                           </div>
                         ))}
-                      </div>
-                      <div style={{background:NAVY,borderRadius:5,padding:"9px 11px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                        <div style={{fontSize:9,color:GOLD,letterSpacing:1.5,textTransform:"uppercase",fontFamily:"sans-serif"}}>Salaire LND/mois</div>
-                        <input type="number" min="0" value={d.salaire||0} onChange={e=>setUsers(users.map(u=>u.id===d.id?{...u,salaire:parseFloat(e.target.value)||0}:u))} style={{width:90,padding:"4px 7px",borderRadius:4,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.08)",color:CREAM,fontSize:13,fontWeight:700,textAlign:"right",outline:"none"}}/>
                       </div>
                       <button onClick={()=>setUsers(users.filter(u=>u.id!==d.id))} style={{...bS,width:"100%",textAlign:"center",color:RED,borderColor:"#f5c6c6",padding:"8px",fontSize:11}}>Supprimer</button>
                     </div>
@@ -1620,11 +1310,11 @@ export default function LNDUnifie() {
               <div style={{position:"fixed",inset:0,background:"rgba(27,42,74,0.6)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center"}}>
                 <div style={{background:WHITE,borderRadius:10,padding:34,width:420,boxShadow:"0 30px 80px rgba(0,0,0,0.3)",borderTop:`4px solid ${GOLD}`}}>
                   <h2 style={{fontSize:20,fontWeight:700,margin:"0 0 22px",color:NAVY}}>Nouveau directeur</h2>
-                  {[{k:"name",l:"Nom",p:"Jean Dupont"},{k:"email",l:"Email",p:"jean@lnd.fr"},{k:"password",l:"Mot de passe",p:"••••••••"},{k:"salaire",l:"Salaire LND (€/mois)",p:"4000"}].map(f=>(
-                    <div key={f.k} style={{marginBottom:13}}><label style={lS2}>{f.l}</label><input value={newDir[f.k]} onChange={e=>setNewDir({...newDir,[f.k]:e.target.value})} placeholder={f.p} type={f.k==="password"?"password":f.k==="salaire"?"number":"text"} style={iS2}/></div>
+                  {[{k:"name",l:"Nom",p:"Jean Dupont"},{k:"email",l:"Email",p:"jean@lnd.fr"},{k:"password",l:"Mot de passe",p:"••••••••"}].map(f=>(
+                    <div key={f.k} style={{marginBottom:13}}><label style={lS2}>{f.l}</label><input value={newDir[f.k]} onChange={e=>setNewDir({...newDir,[f.k]:e.target.value})} placeholder={f.p} type={f.k==="password"?"password":"text"} style={iS2}/></div>
                   ))}
                   <div style={{display:"flex",gap:8,marginTop:22}}>
-                    <button onClick={()=>{if(!newDir.name||!newDir.email)return;const id="dir_"+Date.now();setUsers([...users,{id,email:newDir.email,password:newDir.password,role:"directeur",name:newDir.name,avatar:newDir.name.split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2),salaire:parseFloat(newDir.salaire)||0}]);setShowAddDir(false);setNewDir({name:"",email:"",password:"",salaire:""}); }} style={{...bP,flex:1,padding:13,fontSize:12}}>Créer</button>
+                    <button onClick={()=>{if(!newDir.name||!newDir.email)return;const id="dir_"+Date.now();setUsers([...users,{id,email:newDir.email,password:newDir.password,role:"directeur",name:newDir.name,avatar:newDir.name.split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2)}]);setShowAddDir(false);setNewDir({name:"",email:"",password:""}); }} style={{...bP,flex:1,padding:13,fontSize:12}}>Créer</button>
                     <button onClick={()=>setShowAddDir(false)} style={{...bS,flex:1,padding:13}}>Annuler</button>
                   </div>
                 </div>
