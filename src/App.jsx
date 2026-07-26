@@ -1,4 +1,41 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+
+// ── SUPABASE CONFIG ───────────────────────────────────────────────────
+const SUPA_URL = "https://efgxmmtfcniosrcevfty.supabase.co";
+const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVmZ3htbXRmY25pb3NyY2V2ZnR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwNzI4NjksImV4cCI6MjEwMDY0ODg2OX0.kLAs1R8yVkddDhe9Nazu9kUnYy_oV3RkJfz7y0iPiXA";
+
+const supa = {
+  async get(table) {
+    const r = await fetch(`${SUPA_URL}/rest/v1/${table}?select=*&order=created_at.asc`, {
+      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` }
+    });
+    if (!r.ok) return [];
+    return r.json();
+  },
+  async insert(table, data) {
+    const r = await fetch(`${SUPA_URL}/rest/v1/${table}`, {
+      method: "POST",
+      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
+      body: JSON.stringify(data)
+    });
+    if (!r.ok) return null;
+    const res = await r.json();
+    return res[0];
+  },
+  async update(table, id, data) {
+    await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, {
+      method: "PATCH",
+      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    });
+  },
+  async delete(table, id) {
+    await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, {
+      method: "DELETE",
+      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` }
+    });
+  }
+};
 
 // ── COULEURS ──────────────────────────────────────────────────────────
 const NAVY = "#1B2A4A";
@@ -900,26 +937,11 @@ function VueRappelsCom({prospects, onOpen}) {
 
 // ── APP PRINCIPALE ────────────────────────────────────────────────────
 
-// Helper localStorage
-function useLS(key, init) {
-  const [val, setVal] = useState(() => {
-    try {
-      const s = localStorage.getItem(key);
-      return s ? JSON.parse(s) : (typeof init === 'function' ? init() : init);
-    } catch { return typeof init === 'function' ? init() : init; }
-  });
-  function setAndStore(v) {
-    const next = typeof v === 'function' ? v(val) : v;
-    setVal(next);
-    try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
-  }
-  return [val, setAndStore];
-}
-
 export default function LNDUnifie() {
   const [currentUser, setCurrentUser] = useState(() => {
     try { const s = localStorage.getItem('lnd_session'); return s ? JSON.parse(s) : null; } catch { return null; }
   });
+  const [loading, setLoading] = useState(false);
 
   function login(u) {
     setCurrentUser(u);
@@ -932,7 +954,7 @@ export default function LNDUnifie() {
 
   // OPÉRATIONNEL state
   const [users,setUsers]=useState(USERS_ALL);
-  const [restaurants,setRestaurants]=useLS('lnd_restaurants', INIT_RESTAURANTS_OP);
+  const [restaurants,setRestaurants]=useState([]);
   const [opView,setOpView]=useState("dashboard");
   const [opSelected,setOpSelected]=useState(null);
   const [opTab,setOpTab]=useState("exploitation");
@@ -947,27 +969,56 @@ export default function LNDUnifie() {
   const [showOpTask,setShowOpTask]=useState(false);
 
   // COMMERCIAL state
-  const [prospects,setProspects]=useLS('lnd_prospects', INIT_PROSPECTS);
+  const [prospects,setProspects]=useState([]);
   const [comView,setComView]=useState("pipeline");
   const [comSelected,setComSelected]=useState(null);
   const [showNewProspect,setShowNewProspect]=useState(false);
   const [comSearch,setComSearch]=useState("");
   const [comFilterStage,setComFilterStage]=useState("Tous");
 
-  // MODULE (président : op | commercial | rapport)
+  // MODULE
   const [module,setModule]=useState("op");
   const [periodeRapport,setPeriodeRapport]=useState("mensuel");
   const [sidebarOpen,setSidebarOpen]=useState(false);
 
   // AGENDA state
-  const [agendaEvents,setAgendaEvents]=useLS('lnd_agenda', [
-    {id:1,date:"2026-07-28",heure:"10:00",titre:"RDV Brasserie Le Central",type:"rdv",note:"Bilan mensuel Q2",done:false},
-    {id:2,date:"2026-07-30",heure:"14:30",titre:"Appel prospects Lyon",type:"appel",note:"Relance La Terrasse Dorée",done:false},
-    {id:3,date:"2026-08-05",heure:"09:00",titre:"Audit nouveau restaurant",type:"audit",note:"",done:false},
-  ]);
+  const [agendaEvents,setAgendaEvents]=useState([]);
   const [showAddEvent,setShowAddEvent]=useState(false);
   const [newEvent,setNewEvent]=useState({date:"",heure:"",titre:"",type:"rdv",note:""});
   const [agendaMois,setAgendaMois]=useState(new Date().toISOString().slice(0,7));
+
+  // ── CHARGEMENT DONNÉES SUPABASE ──
+  const loadData = useCallback(async () => {
+    if (!currentUser) return;
+    setLoading(true);
+    try {
+      const [restos, pros, agenda] = await Promise.all([
+        supa.get('restaurants'),
+        supa.get('prospects'),
+        supa.get('agenda'),
+      ]);
+      setRestaurants(restos.map(r => ({
+        ...r,
+        months: r.months || emptyMonths(),
+        notes: r.notes || [],
+        tasks: r.tasks || [],
+        alerts: r.alerts || [],
+        directorId: r.director_id,
+      })));
+      setProspects(pros.map(p => ({
+        ...p,
+        rappels: p.rappels || [],
+        caHistory: p.ca_history || Array(12).fill(0),
+        forfaits: p.forfaits || [],
+      })));
+      setAgendaEvents(agenda.map(e => ({...e, done: e.done || false})));
+    } catch(err) {
+      console.error('Load error:', err);
+    }
+    setLoading(false);
+  }, [currentUser]);
+
+  useEffect(() => { loadData(); }, [loadData]);
 
   // ── TOUS LES useMemo DOIVENT ÊTRE AVANT TOUT RETURN CONDITIONNEL ──
   const filteredProspects=useMemo(()=>prospects.filter(r=>{
@@ -991,6 +1042,15 @@ export default function LNDUnifie() {
   // ── LOGIN — après tous les hooks ──
   if(!currentUser) return <LoginScreen onLogin={u=>login(u)}/>;
 
+  if(loading) return (
+    <div style={{minHeight:"100vh",background:NAVY,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+      <svg viewBox="0 0 1750.55 537.72" style={{width:200,height:62}} xmlns="http://www.w3.org/2000/svg">
+        <g><path style={{fill:CREAM}} d="M450.97,57.21l-.02,155.08-49.33.04-.23-161.24c-.02-11.79-4.38-23.76-11.01-32.52C377.51,1.56,351.86,9.53,357.86.02l135.7-.02,1.56,3.2c.42.86-1.78,2.53-2.86,2.75l-15.08,3.07c-8.86,1.8-17.1,8.7-20.68,16.92-4.28,9.81-5.52,19.72-5.52,31.28Z"/></g>
+      </svg>
+      <div style={{color:GOLD,fontSize:12,letterSpacing:3,textTransform:"uppercase",fontFamily:"sans-serif",fontWeight:600}}>Chargement…</div>
+    </div>
+  );
+
   // Routing selon rôle
   const isPresident=currentUser.role==="president";
   const isCommercial=currentUser.role==="commercial";
@@ -1001,6 +1061,14 @@ export default function LNDUnifie() {
   const directors=users.filter(u=>u.role==="directeur");
 
   function updateResto(updated) {
+    const mapped = {
+      name: updated.name, contact: updated.contact, email: updated.email,
+      phone: updated.phone, caisse: updated.caisse, status: updated.status,
+      stage: updated.stage, since: updated.since, employees: updated.employees,
+      director_id: updated.directorId, months: updated.months,
+      notes: updated.notes, tasks: updated.tasks, alerts: updated.alerts,
+    };
+    supa.update('restaurants', updated.id, mapped);
     setRestaurants(r=>r.map(x=>x.id===updated.id?updated:x));
     setOpSelected(updated);
   }
@@ -1016,10 +1084,22 @@ export default function LNDUnifie() {
   function addTask(){if(!opTask.trim())return;updateResto({...opSelected,tasks:[...opSelected.tasks,{id:Date.now(),text:opTask,done:false,due:""}]});setOpTask("");setShowOpTask(false);}
   function toggleTask(id){updateResto({...opSelected,tasks:opSelected.tasks.map(t=>t.id===id?{...t,done:!t.done}:t)});}
 
-  function saveProspect(data){
-    if(data.id) setProspects(p=>p.map(x=>x.id===data.id?data:x));
-    else setProspects(p=>[{...data,id:Date.now()},...p]);
-    setComSelected(null);setShowNewProspect(false);
+  async function saveProspect(data){
+    const mapped = {
+      nom: data.nom, contact: data.contact, email: data.email, tel: data.tel,
+      adresse: data.adresse, ville: data.ville, region: data.region, cp: data.cp,
+      ca: data.ca||0, salaries: data.salaries||0, stage: data.stage,
+      notes: data.notes, rappels: data.rappels||[], ca_history: data.caHistory||[],
+      forfaits: data.forfaits||[],
+    };
+    if(data.id) {
+      await supa.update('prospects', data.id, mapped);
+      setProspects(p=>p.map(x=>x.id===data.id?{...data}:x));
+    } else {
+      const created = await supa.insert('prospects', mapped);
+      if(created) setProspects(p=>[{...data, id:created.id}, ...p]);
+    }
+    setComSelected(null); setShowNewProspect(false);
   }
 
   const iS2={width:"100%",padding:"10px 13px",borderRadius:5,border:"1px solid rgba(27,42,74,0.18)",fontSize:13,outline:"none",color:NAVY,background:WHITE,boxSizing:"border-box"};
@@ -1244,8 +1324,8 @@ export default function LNDUnifie() {
                           </div>
                           <div style={{display:"flex",gap:6,alignItems:"center"}}>
                             <span style={{fontSize:9,background:typeColor+"20",color:typeColor,padding:"3px 8px",borderRadius:3,fontWeight:700,fontFamily:"sans-serif",textTransform:"uppercase"}}>{ev.type}</span>
-                            <button onClick={()=>setAgendaEvents(a=>a.map(x=>x.id===ev.id?{...x,done:true}:x))} style={{background:"none",border:`1px solid ${GREEN}`,borderRadius:4,color:GREEN,fontSize:10,cursor:"pointer",padding:"3px 7px",fontFamily:"sans-serif",fontWeight:700}}>✓</button>
-                            <button onClick={()=>setAgendaEvents(a=>a.filter(x=>x.id!==ev.id))} style={{background:"none",border:"1px solid #ddd",borderRadius:4,color:"#ccc",fontSize:12,cursor:"pointer",padding:"2px 6px",lineHeight:1}}>✕</button>
+                            <button onClick={()=>{supa.update('agenda',ev.id,{done:true});setAgendaEvents(a=>a.map(x=>x.id===ev.id?{...x,done:true}:x));}} style={{background:"none",border:`1px solid ${GREEN}`,borderRadius:4,color:GREEN,fontSize:10,cursor:"pointer",padding:"3px 7px",fontFamily:"sans-serif",fontWeight:700}}>✓</button>
+                            <button onClick={()=>{supa.delete('agenda',ev.id);setAgendaEvents(a=>a.filter(x=>x.id!==ev.id));}} style={{background:"none",border:"1px solid #ddd",borderRadius:4,color:"#ccc",fontSize:12,cursor:"pointer",padding:"2px 6px",lineHeight:1}}>✕</button>
                           </div>
                         </div>
                         {ev.note&&<div style={{fontSize:12,color:"#888",fontFamily:"sans-serif",fontStyle:"italic",paddingTop:6,borderTop:`1px solid ${CREAM}`}}>{ev.note}</div>}
@@ -1273,7 +1353,7 @@ export default function LNDUnifie() {
                               {new Date(ev.date).toLocaleDateString("fr-FR",{day:"numeric",month:"long"})} {ev.heure&&`· ${ev.heure}`}
                             </div>
                           </div>
-                          <button onClick={()=>setAgendaEvents(a=>a.filter(x=>x.id!==ev.id))} style={{background:"none",border:"none",color:"#ddd",cursor:"pointer",fontSize:14}}>✕</button>
+                          <button onClick={()=>{supa.delete('agenda',ev.id);setAgendaEvents(a=>a.filter(x=>x.id!==ev.id));}} style={{background:"none",border:"none",color:"#ddd",cursor:"pointer",fontSize:14}}>✕</button>
                         </div>
                       </div>
                     );
@@ -1310,9 +1390,11 @@ export default function LNDUnifie() {
                     <textarea value={newEvent.note} onChange={e=>setNewEvent({...newEvent,note:e.target.value})} placeholder="Contexte, objectifs..." style={{...iS2,resize:"vertical",minHeight:60,lineHeight:1.6}}/>
                   </div>
                   <div style={{display:"flex",gap:10}}>
-                    <button onClick={()=>{
+                    <button onClick={async()=>{
                       if(!newEvent.titre||!newEvent.date) return;
-                      setAgendaEvents(a=>[...a,{...newEvent,id:Date.now(),done:false}]);
+                      const data = {...newEvent, done:false, user_id:currentUser.id};
+                      const created = await supa.insert('agenda', data);
+                      if(created) setAgendaEvents(a=>[...a,{...data,id:created.id}]);
                       setNewEvent({date:"",heure:"",titre:"",type:"rdv",note:""});
                       setShowAddEvent(false);
                     }} style={{...bP,flex:1,padding:13,fontSize:12}}>Ajouter</button>
@@ -1607,7 +1689,19 @@ export default function LNDUnifie() {
                     </div>
                   </div>
                   <div style={{display:"flex",gap:8,marginTop:22}}>
-                    <button onClick={()=>{setRestaurants([{...newResto,id:Date.now(),since:new Date().toISOString().slice(0,7),employees:0,months:emptyMonths(),notes:[],tasks:[],alerts:[]},...restaurants]);setShowAddResto(false);setNewResto({name:"",contact:"",email:"",phone:"",caisse:"Lightspeed",status:"actif",stage:"Onboarding",directorId:""});}} style={{...bP,flex:1,padding:13,fontSize:12}}>Créer</button>
+                    <button onClick={async()=>{
+                      const data = {
+                        name:newResto.name, contact:newResto.contact, email:newResto.email,
+                        phone:newResto.phone, caisse:newResto.caisse, status:"actif",
+                        stage:"Onboarding", since:new Date().toISOString().slice(0,7),
+                        employees:0, director_id:newResto.directorId,
+                        months:emptyMonths(), notes:[], tasks:[], alerts:[]
+                      };
+                      const created = await supa.insert('restaurants', data);
+                      if(created) setRestaurants(r=>[{...data,id:created.id,directorId:newResto.directorId},...r]);
+                      setShowAddResto(false);
+                      setNewResto({name:"",contact:"",email:"",phone:"",caisse:"Lightspeed",status:"actif",stage:"Onboarding",directorId:""});
+                    }} style={{...bP,flex:1,padding:13,fontSize:12}}>Créer</button>
                     <button onClick={()=>setShowAddResto(false)} style={{...bS,flex:1,padding:13}}>Annuler</button>
                   </div>
                 </div>
