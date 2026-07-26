@@ -899,12 +899,40 @@ function VueRappelsCom({prospects, onOpen}) {
 }
 
 // ── APP PRINCIPALE ────────────────────────────────────────────────────
+
+// Helper localStorage
+function useLS(key, init) {
+  const [val, setVal] = useState(() => {
+    try {
+      const s = localStorage.getItem(key);
+      return s ? JSON.parse(s) : (typeof init === 'function' ? init() : init);
+    } catch { return typeof init === 'function' ? init() : init; }
+  });
+  function setAndStore(v) {
+    const next = typeof v === 'function' ? v(val) : v;
+    setVal(next);
+    try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
+  }
+  return [val, setAndStore];
+}
+
 export default function LNDUnifie() {
-  const [currentUser,setCurrentUser]=useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    try { const s = localStorage.getItem('lnd_session'); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
+
+  function login(u) {
+    setCurrentUser(u);
+    try { localStorage.setItem('lnd_session', JSON.stringify(u)); } catch {}
+  }
+  function logout() {
+    setCurrentUser(null);
+    try { localStorage.removeItem('lnd_session'); } catch {}
+  }
 
   // OPÉRATIONNEL state
   const [users,setUsers]=useState(USERS_ALL);
-  const [restaurants,setRestaurants]=useState(INIT_RESTAURANTS_OP);
+  const [restaurants,setRestaurants]=useLS('lnd_restaurants', INIT_RESTAURANTS_OP);
   const [opView,setOpView]=useState("dashboard");
   const [opSelected,setOpSelected]=useState(null);
   const [opTab,setOpTab]=useState("exploitation");
@@ -919,7 +947,7 @@ export default function LNDUnifie() {
   const [showOpTask,setShowOpTask]=useState(false);
 
   // COMMERCIAL state
-  const [prospects,setProspects]=useState(INIT_PROSPECTS);
+  const [prospects,setProspects]=useLS('lnd_prospects', INIT_PROSPECTS);
   const [comView,setComView]=useState("pipeline");
   const [comSelected,setComSelected]=useState(null);
   const [showNewProspect,setShowNewProspect]=useState(false);
@@ -932,7 +960,7 @@ export default function LNDUnifie() {
   const [sidebarOpen,setSidebarOpen]=useState(false);
 
   // AGENDA state
-  const [agendaEvents,setAgendaEvents]=useState([
+  const [agendaEvents,setAgendaEvents]=useLS('lnd_agenda', [
     {id:1,date:"2026-07-28",heure:"10:00",titre:"RDV Brasserie Le Central",type:"rdv",note:"Bilan mensuel Q2",done:false},
     {id:2,date:"2026-07-30",heure:"14:30",titre:"Appel prospects Lyon",type:"appel",note:"Relance La Terrasse Dorée",done:false},
     {id:3,date:"2026-08-05",heure:"09:00",titre:"Audit nouveau restaurant",type:"audit",note:"",done:false},
@@ -961,7 +989,7 @@ export default function LNDUnifie() {
   }),[visibleRestosAll]);
 
   // ── LOGIN — après tous les hooks ──
-  if(!currentUser) return <LoginScreen onLogin={u=>setCurrentUser(u)}/>;
+  if(!currentUser) return <LoginScreen onLogin={u=>login(u)}/>;
 
   // Routing selon rôle
   const isPresident=currentUser.role==="president";
@@ -1115,7 +1143,7 @@ export default function LNDUnifie() {
               {opStats.alerts>0&&<div style={{fontSize:11,color:GOLD,marginBottom:2,fontFamily:"sans-serif"}}>⚠ {opStats.alerts} alerte{opStats.alerts>1?"s":""}</div>}
             </>
           }
-          <button onClick={()=>setCurrentUser(null)} style={{fontSize:11,color:"rgba(245,240,234,0.3)",background:"none",border:"none",cursor:"pointer",fontFamily:"sans-serif",padding:0,marginTop:4}}>← Déconnexion</button>
+          <button onClick={()=>logout()} style={{fontSize:11,color:"rgba(245,240,234,0.3)",background:"none",border:"none",cursor:"pointer",fontFamily:"sans-serif",padding:0,marginTop:4}}>← Déconnexion</button>
         </div>
       </div>
 
