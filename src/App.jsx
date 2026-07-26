@@ -935,6 +935,153 @@ function VueRappelsCom({prospects, onOpen}) {
   );
 }
 
+// ── AGENDA BLOCK (partagé entre tous les rôles) ───────────────────────
+function AgendaBlock({agendaEvents,setAgendaEvents,agendaMois,setAgendaMois,showAddEvent,setShowAddEvent,newEvent,setNewEvent,currentUser,bP,bS,iS2,lS2}) {
+  const typeColor = {rdv:GOLD,appel:NAVY2,audit:"#8e44ad",note:GREEN};
+  const [yr,mo] = agendaMois.split("-").map(Number);
+  const firstDay = new Date(yr,mo-1,1).getDay();
+  const startOffset = firstDay===0?6:firstDay-1;
+  const daysInMonth = new Date(yr,mo,0).getDate();
+  const today = new Date();
+  const jours = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
+  const cells = [];
+  for(let i=0;i<startOffset;i++) cells.push(null);
+  for(let d=1;d<=daysInMonth;d++) cells.push(d);
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24}}>
+        <div>
+          <div style={{fontSize:9,letterSpacing:4,color:GOLD,textTransform:"uppercase",marginBottom:7,fontWeight:600,fontFamily:"sans-serif"}}>Planning</div>
+          <h1 style={{fontSize:28,fontWeight:700,margin:0,letterSpacing:-0.5,fontFamily:"'Cormorant Garamond',Georgia,serif"}}>Agenda</h1>
+          <div style={{width:36,height:2,background:GOLD,marginTop:8}}/>
+        </div>
+        <div style={{display:"flex",gap:10,alignItems:"center"}}>
+          <input type="month" value={agendaMois} onChange={e=>setAgendaMois(e.target.value)} style={{padding:"9px 14px",borderRadius:6,border:"1px solid rgba(27,42,74,0.2)",fontSize:13,outline:"none",background:WHITE,color:NAVY,fontFamily:"sans-serif"}}/>
+          <button onClick={()=>setShowAddEvent(true)} style={bP}>+ Événement</button>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
+        {[
+          {label:"Total ce mois",val:agendaEvents.filter(e=>e.date.startsWith(agendaMois)).length,accent:GOLD},
+          {label:"RDV",val:agendaEvents.filter(e=>e.date.startsWith(agendaMois)&&e.type==="rdv").length,accent:NAVY},
+          {label:"Appels",val:agendaEvents.filter(e=>e.date.startsWith(agendaMois)&&e.type==="appel").length,accent:NAVY2},
+          {label:"À venir",val:agendaEvents.filter(e=>new Date(e.date)>=new Date()&&!e.done).length,accent:GREEN},
+        ].map((k,i)=>(
+          <div key={i} style={{background:WHITE,borderRadius:8,padding:"16px 18px",boxShadow:"0 2px 12px rgba(27,42,74,0.07)",borderLeft:`4px solid ${k.accent}`}}>
+            <div style={{fontSize:9,color:"#aaa",letterSpacing:2,textTransform:"uppercase",fontWeight:600,marginBottom:5,fontFamily:"sans-serif"}}>{k.label}</div>
+            <div style={{fontSize:26,fontWeight:700,color:k.accent,fontFamily:"'Cormorant Garamond',serif"}}>{k.val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Calendrier */}
+      <div style={{background:WHITE,borderRadius:10,overflow:"hidden",boxShadow:"0 2px 16px rgba(27,42,74,0.08)",marginBottom:20}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",background:NAVY}}>
+          {jours.map(j=><div key={j} style={{padding:"10px 0",textAlign:"center",fontSize:10,fontWeight:700,color:GOLD,letterSpacing:1.5,fontFamily:"sans-serif"}}>{j}</div>)}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}}>
+          {cells.map((d,i)=>{
+            if(!d) return <div key={`e${i}`} style={{minHeight:68,background:"#fafaf8",borderRight:"1px solid #f0ede8",borderBottom:"1px solid #f0ede8"}}/>;
+            const ds=`${yr}-${String(mo).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+            const evs=agendaEvents.filter(e=>e.date===ds);
+            const isToday=today.getFullYear()===yr&&today.getMonth()===mo-1&&today.getDate()===d;
+            const isWE=(i%7)===5||(i%7)===6;
+            return (
+              <div key={d} style={{minHeight:68,padding:"5px",borderRight:"1px solid #f0ede8",borderBottom:"1px solid #f0ede8",background:isWE?"#faf8f5":WHITE}}
+                onMouseEnter={e=>e.currentTarget.style.background=CREAM}
+                onMouseLeave={e=>e.currentTarget.style.background=isWE?"#faf8f5":WHITE}>
+                <div style={{width:21,height:21,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",background:isToday?GOLD:"transparent",color:isToday?WHITE:isWE?"#aaa":NAVY,fontSize:11,fontWeight:isToday?700:400,fontFamily:"sans-serif",marginBottom:2}}>{d}</div>
+                {evs.slice(0,2).map((ev,ei)=>(
+                  <div key={ei} style={{fontSize:8,fontWeight:600,color:WHITE,background:typeColor[ev.type]||GOLD,borderRadius:2,padding:"1px 4px",marginBottom:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.titre}</div>
+                ))}
+                {evs.length>2&&<div style={{fontSize:8,color:GOLD,fontWeight:600}}>+{evs.length-2}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Listes */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        <div>
+          <div style={{fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",color:NAVY,marginBottom:12,fontFamily:"sans-serif"}}>📅 À venir</div>
+          {agendaEvents.filter(e=>e.date.startsWith(agendaMois)&&new Date(e.date)>=new Date()&&!e.done).sort((a,b)=>a.date.localeCompare(b.date)).map(ev=>{
+            const tc=typeColor[ev.type]||GOLD;
+            return (
+              <div key={ev.id} style={{background:WHITE,borderRadius:8,padding:"14px 16px",marginBottom:8,boxShadow:"0 2px 10px rgba(27,42,74,0.07)",borderLeft:`4px solid ${tc}`}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700,color:NAVY,marginBottom:2}}>{ev.titre}</div>
+                    <div style={{fontSize:11,color:"#aaa",fontFamily:"sans-serif"}}>{new Date(ev.date).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})}{ev.heure?` · ${ev.heure}`:""}</div>
+                  </div>
+                  <div style={{display:"flex",gap:5}}>
+                    <span style={{fontSize:9,background:tc+"20",color:tc,padding:"2px 6px",borderRadius:3,fontWeight:700,fontFamily:"sans-serif",textTransform:"uppercase"}}>{ev.type}</span>
+                    <button onClick={()=>{supa.update('agenda',ev.id,{done:true});setAgendaEvents(a=>a.map(x=>x.id===ev.id?{...x,done:true}:x));}} style={{background:"none",border:`1px solid ${GREEN}`,borderRadius:4,color:GREEN,fontSize:10,cursor:"pointer",padding:"2px 6px",fontWeight:700}}>✓</button>
+                    <button onClick={()=>{supa.delete('agenda',ev.id);setAgendaEvents(a=>a.filter(x=>x.id!==ev.id));}} style={{background:"none",border:"1px solid #ddd",borderRadius:4,color:"#ccc",fontSize:12,cursor:"pointer",padding:"1px 5px"}}>✕</button>
+                  </div>
+                </div>
+                {ev.note&&<div style={{fontSize:11,color:"#888",fontStyle:"italic",paddingTop:5,borderTop:`1px solid ${CREAM}`,fontFamily:"sans-serif"}}>{ev.note}</div>}
+              </div>
+            );
+          })}
+          {agendaEvents.filter(e=>e.date.startsWith(agendaMois)&&new Date(e.date)>=new Date()&&!e.done).length===0&&
+            <div style={{color:"#bbb",fontSize:13,fontFamily:"sans-serif",padding:"16px 0"}}>Aucun événement à venir.</div>}
+        </div>
+        <div>
+          <div style={{fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",color:"#aaa",marginBottom:12,fontFamily:"sans-serif"}}>✓ Réalisés</div>
+          {agendaEvents.filter(e=>e.date.startsWith(agendaMois)&&(new Date(e.date)<new Date()||e.done)).sort((a,b)=>b.date.localeCompare(a.date)).map(ev=>(
+            <div key={ev.id} style={{background:WHITE,borderRadius:8,padding:"12px 16px",marginBottom:7,boxShadow:"0 1px 6px rgba(27,42,74,0.05)",opacity:0.65,borderLeft:"4px solid #ddd"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontSize:12,fontWeight:600,color:"#888",textDecoration:"line-through"}}>{ev.titre}</div>
+                  <div style={{fontSize:10,color:"#bbb",fontFamily:"sans-serif"}}>{new Date(ev.date).toLocaleDateString("fr-FR",{day:"numeric",month:"long"})}{ev.heure?` · ${ev.heure}`:""}</div>
+                </div>
+                <button onClick={()=>{supa.delete('agenda',ev.id);setAgendaEvents(a=>a.filter(x=>x.id!==ev.id));}} style={{background:"none",border:"none",color:"#ddd",cursor:"pointer",fontSize:14}}>✕</button>
+              </div>
+            </div>
+          ))}
+          {agendaEvents.filter(e=>e.date.startsWith(agendaMois)&&(new Date(e.date)<new Date()||e.done)).length===0&&
+            <div style={{color:"#ccc",fontSize:13,fontFamily:"sans-serif",padding:"16px 0"}}>Aucun événement passé.</div>}
+        </div>
+      </div>
+
+      {/* Modal ajout */}
+      {showAddEvent&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(27,42,74,0.6)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{background:WHITE,borderRadius:10,padding:34,width:460,boxShadow:"0 30px 80px rgba(0,0,0,0.3)",borderTop:`4px solid ${GOLD}`}}>
+            <h2 style={{fontSize:20,fontWeight:700,margin:"0 0 20px",color:NAVY}}>Nouvel événement</h2>
+            <div style={{marginBottom:13}}><label style={lS2}>Titre</label><input value={newEvent.titre} onChange={e=>setNewEvent({...newEvent,titre:e.target.value})} placeholder="RDV client, Appel, Audit..." style={iS2}/></div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:13}}>
+              <div><label style={lS2}>Date</label><input type="date" value={newEvent.date} onChange={e=>setNewEvent({...newEvent,date:e.target.value})} style={iS2}/></div>
+              <div><label style={lS2}>Heure</label><input type="time" value={newEvent.heure} onChange={e=>setNewEvent({...newEvent,heure:e.target.value})} style={iS2}/></div>
+            </div>
+            <div style={{marginBottom:13}}><label style={lS2}>Type</label>
+              <select value={newEvent.type} onChange={e=>setNewEvent({...newEvent,type:e.target.value})} style={{...iS2,background:WHITE,cursor:"pointer"}}>
+                <option value="rdv">RDV</option><option value="appel">Appel</option><option value="audit">Audit</option><option value="note">Note</option>
+              </select>
+            </div>
+            <div style={{marginBottom:20}}><label style={lS2}>Note</label><textarea value={newEvent.note} onChange={e=>setNewEvent({...newEvent,note:e.target.value})} placeholder="Contexte, objectifs..." style={{...iS2,resize:"vertical",minHeight:60,lineHeight:1.6}}/></div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={async()=>{
+                if(!newEvent.titre||!newEvent.date) return;
+                const data={...newEvent,done:false,user_id:currentUser.id};
+                const created=await supa.insert('agenda',data);
+                if(created) setAgendaEvents(a=>[...a,{...data,id:created.id}]);
+                setNewEvent({date:"",heure:"",titre:"",type:"rdv",note:""});
+                setShowAddEvent(false);
+              }} style={{...bP,flex:1,padding:13,fontSize:12}}>Ajouter</button>
+              <button onClick={()=>setShowAddEvent(false)} style={{...bS,flex:1,padding:13}}>Annuler</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── APP PRINCIPALE ────────────────────────────────────────────────────
 
 export default function LNDUnifie() {
@@ -1121,11 +1268,11 @@ export default function LNDUnifie() {
     {id:"ca",icon:"€",label:"CA & Classement"},
     {id:"table",icon:"≡",label:"Vue tableau"},
     {id:"rappels",icon:"🔔",label:"Rappels"},
+    {id:"agenda",icon:"📅",label:"Agenda"},
   ];
   const activeNavItems=showRapportModule
     ?[{id:"mensuel",icon:"📅",label:"Mensuel"},{id:"trimestriel",icon:"📆",label:"Trimestriel"},{id:"annuel",icon:"🗓",label:"Annuel"}]
     :showCommercialModule?comNavItems
-    :(isPresident||isCommercial)?[...opNavItems,{id:"agenda",icon:"📅",label:"Agenda"}]
     :[...opNavItems,{id:"agenda",icon:"📅",label:"Agenda"}];
   const activeView=showRapportModule?periodeRapport:showCommercialModule?comView:opView;
   const setActiveView=showRapportModule?setPeriodeRapport:showCommercialModule?setComView:setOpView;
@@ -1233,177 +1380,13 @@ export default function LNDUnifie() {
 
         {/* ══════════════ AGENDA ══════════════ */}
         {!showCommercialModule&&!showRapportModule&&opView==="agenda"&&(
-          <div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:28}}>
-              <div>
-                <div style={{fontSize:9,letterSpacing:4,color:GOLD,textTransform:"uppercase",marginBottom:7,fontWeight:600,fontFamily:"sans-serif"}}>Planning</div>
-                <h1 style={{fontSize:28,fontWeight:700,margin:0,letterSpacing:-0.5,fontFamily:"'Cormorant Garamond',Georgia,serif"}}>Agenda</h1>
-                <div style={{width:36,height:2,background:GOLD,marginTop:8}}/>
-              </div>
-              <div style={{display:"flex",gap:10,alignItems:"center"}}>
-                <input type="month" value={agendaMois} onChange={e=>setAgendaMois(e.target.value)} style={{padding:"9px 14px",borderRadius:6,border:"1px solid rgba(27,42,74,0.2)",fontSize:13,outline:"none",background:WHITE,color:NAVY,fontFamily:"sans-serif"}}/>
-                <button onClick={()=>setShowAddEvent(true)} style={bP}>+ Événement</button>
-              </div>
-            </div>
-
-            {/* Stats rapides */}
-            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:24}}>
-              {[
-                {label:"Total ce mois",val:agendaEvents.filter(e=>e.date.startsWith(agendaMois)).length,accent:GOLD},
-                {label:"RDV",val:agendaEvents.filter(e=>e.date.startsWith(agendaMois)&&e.type==="rdv").length,accent:NAVY},
-                {label:"Appels",val:agendaEvents.filter(e=>e.date.startsWith(agendaMois)&&e.type==="appel").length,accent:NAVY2},
-                {label:"À venir",val:agendaEvents.filter(e=>new Date(e.date)>=new Date()&&!e.done).length,accent:GREEN},
-              ].map((k,i)=>(
-                <div key={i} style={{background:WHITE,borderRadius:8,padding:"16px 18px",boxShadow:"0 2px 12px rgba(27,42,74,0.07)",borderLeft:`4px solid ${k.accent}`}}>
-                  <div style={{fontSize:9,color:"#aaa",letterSpacing:2,textTransform:"uppercase",fontWeight:600,marginBottom:5,fontFamily:"sans-serif"}}>{k.label}</div>
-                  <div style={{fontSize:26,fontWeight:700,color:k.accent,fontFamily:"'Cormorant Garamond',serif"}}>{k.val}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* ── CALENDRIER ── */}
-            {(()=>{
-              const [yr,mo] = agendaMois.split("-").map(Number);
-              const firstDay = new Date(yr, mo-1, 1).getDay();
-              const startOffset = firstDay===0?6:firstDay-1; // Lundi=0
-              const daysInMonth = new Date(yr, mo, 0).getDate();
-              const today = new Date();
-              const jours = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
-              const typeColor = {rdv:GOLD,appel:NAVY2,audit:"#8e44ad",note:GREEN};
-              const cells = [];
-              for(let i=0;i<startOffset;i++) cells.push(null);
-              for(let d=1;d<=daysInMonth;d++) cells.push(d);
-              return (
-                <div style={{background:WHITE,borderRadius:10,overflow:"hidden",boxShadow:"0 2px 16px rgba(27,42,74,0.08)",marginBottom:24}}>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",background:NAVY}}>
-                    {jours.map(j=><div key={j} style={{padding:"10px 0",textAlign:"center",fontSize:10,fontWeight:700,color:GOLD,letterSpacing:1.5,fontFamily:"sans-serif"}}>{j}</div>)}
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:0}}>
-                    {cells.map((d,i)=>{
-                      if(!d) return <div key={`e${i}`} style={{minHeight:72,background:"#fafaf8",borderRight:"1px solid #f0ede8",borderBottom:"1px solid #f0ede8"}}/>;
-                      const dateStr=`${yr}-${String(mo).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-                      const evs=agendaEvents.filter(e=>e.date===dateStr);
-                      const isToday=today.getFullYear()===yr&&today.getMonth()===mo-1&&today.getDate()===d;
-                      const isWeekend=(i%7)===5||(i%7)===6;
-                      return (
-                        <div key={d} style={{minHeight:72,padding:"6px 6px 4px",borderRight:"1px solid #f0ede8",borderBottom:"1px solid #f0ede8",background:isWeekend?"#faf8f5":WHITE,cursor:evs.length>0?"pointer":"default",transition:"background 0.1s"}}
-                          onClick={()=>{if(evs.length>0){setAgendaMois(dateStr.slice(0,7));}}}
-                          onMouseEnter={e=>{if(e.currentTarget.style)e.currentTarget.style.background=CREAM}}
-                          onMouseLeave={e=>{if(e.currentTarget.style)e.currentTarget.style.background=isWeekend?"#faf8f5":WHITE}}>
-                          <div style={{width:22,height:22,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",background:isToday?GOLD:"transparent",color:isToday?WHITE:isWeekend?"#aaa":NAVY,fontSize:11,fontWeight:isToday?700:500,fontFamily:"sans-serif",marginBottom:3}}>{d}</div>
-                          {evs.slice(0,2).map((ev,ei)=>(
-                            <div key={ei} style={{fontSize:9,fontWeight:600,color:WHITE,background:typeColor[ev.type]||GOLD,borderRadius:3,padding:"2px 5px",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"sans-serif"}}>{ev.titre}</div>
-                          ))}
-                          {evs.length>2&&<div style={{fontSize:9,color:GOLD,fontFamily:"sans-serif",fontWeight:600}}>+{evs.length-2}</div>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Liste événements du mois */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
-              {/* Colonne à venir */}
-              <div>
-                <div style={{fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",color:NAVY,marginBottom:14,fontFamily:"sans-serif"}}>📅 À venir</div>
-                {agendaEvents
-                  .filter(e=>e.date.startsWith(agendaMois)&&new Date(e.date)>=new Date()&&!e.done)
-                  .sort((a,b)=>a.date.localeCompare(b.date)||a.heure.localeCompare(b.heure))
-                  .map(ev=>{
-                    const typeColor={rdv:GOLD,appel:NAVY2,audit:"#8e44ad",note:"#27ae60"}[ev.type]||GOLD;
-                    return (
-                      <div key={ev.id} style={{background:WHITE,borderRadius:8,padding:"16px 18px",marginBottom:10,boxShadow:"0 2px 12px rgba(27,42,74,0.07)",borderLeft:`4px solid ${typeColor}`}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
-                          <div>
-                            <div style={{fontSize:13,fontWeight:700,color:NAVY,marginBottom:2}}>{ev.titre}</div>
-                            <div style={{fontSize:11,color:"#aaa",fontFamily:"sans-serif"}}>
-                              {new Date(ev.date).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})} {ev.heure&&`· ${ev.heure}`}
-                            </div>
-                          </div>
-                          <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                            <span style={{fontSize:9,background:typeColor+"20",color:typeColor,padding:"3px 8px",borderRadius:3,fontWeight:700,fontFamily:"sans-serif",textTransform:"uppercase"}}>{ev.type}</span>
-                            <button onClick={()=>{supa.update('agenda',ev.id,{done:true});setAgendaEvents(a=>a.map(x=>x.id===ev.id?{...x,done:true}:x));}} style={{background:"none",border:`1px solid ${GREEN}`,borderRadius:4,color:GREEN,fontSize:10,cursor:"pointer",padding:"3px 7px",fontFamily:"sans-serif",fontWeight:700}}>✓</button>
-                            <button onClick={()=>{supa.delete('agenda',ev.id);setAgendaEvents(a=>a.filter(x=>x.id!==ev.id));}} style={{background:"none",border:"1px solid #ddd",borderRadius:4,color:"#ccc",fontSize:12,cursor:"pointer",padding:"2px 6px",lineHeight:1}}>✕</button>
-                          </div>
-                        </div>
-                        {ev.note&&<div style={{fontSize:12,color:"#888",fontFamily:"sans-serif",fontStyle:"italic",paddingTop:6,borderTop:`1px solid ${CREAM}`}}>{ev.note}</div>}
-                      </div>
-                    );
-                  })}
-                {agendaEvents.filter(e=>e.date.startsWith(agendaMois)&&new Date(e.date)>=new Date()&&!e.done).length===0&&
-                  <div style={{color:"#bbb",fontSize:13,fontFamily:"sans-serif",padding:"20px 0"}}>Aucun événement à venir ce mois-ci.</div>}
-              </div>
-
-              {/* Colonne passés/faits */}
-              <div>
-                <div style={{fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",color:"#aaa",marginBottom:14,fontFamily:"sans-serif"}}>✓ Réalisés</div>
-                {agendaEvents
-                  .filter(e=>e.date.startsWith(agendaMois)&&(new Date(e.date)<new Date()||e.done))
-                  .sort((a,b)=>b.date.localeCompare(a.date))
-                  .map(ev=>{
-                    const typeColor={rdv:GOLD,appel:NAVY2,audit:"#8e44ad",note:"#27ae60"}[ev.type]||GOLD;
-                    return (
-                      <div key={ev.id} style={{background:WHITE,borderRadius:8,padding:"14px 18px",marginBottom:8,boxShadow:"0 1px 6px rgba(27,42,74,0.05)",borderLeft:`4px solid #ddd`,opacity:0.7}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                          <div>
-                            <div style={{fontSize:13,fontWeight:600,color:"#888",textDecoration:"line-through",marginBottom:2}}>{ev.titre}</div>
-                            <div style={{fontSize:11,color:"#bbb",fontFamily:"sans-serif"}}>
-                              {new Date(ev.date).toLocaleDateString("fr-FR",{day:"numeric",month:"long"})} {ev.heure&&`· ${ev.heure}`}
-                            </div>
-                          </div>
-                          <button onClick={()=>{supa.delete('agenda',ev.id);setAgendaEvents(a=>a.filter(x=>x.id!==ev.id));}} style={{background:"none",border:"none",color:"#ddd",cursor:"pointer",fontSize:14}}>✕</button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                {agendaEvents.filter(e=>e.date.startsWith(agendaMois)&&(new Date(e.date)<new Date()||e.done)).length===0&&
-                  <div style={{color:"#ccc",fontSize:13,fontFamily:"sans-serif",padding:"20px 0"}}>Aucun événement passé.</div>}
-              </div>
-            </div>
-
-            {/* Modal ajout événement */}
-            {showAddEvent&&(
-              <div style={{position:"fixed",inset:0,background:"rgba(27,42,74,0.6)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <div style={{background:WHITE,borderRadius:10,padding:34,width:460,boxShadow:"0 30px 80px rgba(0,0,0,0.3)",borderTop:`4px solid ${GOLD}`}}>
-                  <h2 style={{fontSize:20,fontWeight:700,margin:"0 0 22px",color:NAVY}}>Nouvel événement</h2>
-                  <div style={{marginBottom:13}}>
-                    <label style={lS2}>Titre</label>
-                    <input value={newEvent.titre} onChange={e=>setNewEvent({...newEvent,titre:e.target.value})} placeholder="RDV client, Appel, Audit..." style={iS2}/>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:13}}>
-                    <div><label style={lS2}>Date</label><input type="date" value={newEvent.date} onChange={e=>setNewEvent({...newEvent,date:e.target.value})} style={iS2}/></div>
-                    <div><label style={lS2}>Heure</label><input type="time" value={newEvent.heure} onChange={e=>setNewEvent({...newEvent,heure:e.target.value})} style={iS2}/></div>
-                  </div>
-                  <div style={{marginBottom:13}}>
-                    <label style={lS2}>Type</label>
-                    <select value={newEvent.type} onChange={e=>setNewEvent({...newEvent,type:e.target.value})} style={{...iS2,background:WHITE,cursor:"pointer"}}>
-                      <option value="rdv">RDV</option>
-                      <option value="appel">Appel</option>
-                      <option value="audit">Audit</option>
-                      <option value="note">Note</option>
-                    </select>
-                  </div>
-                  <div style={{marginBottom:20}}>
-                    <label style={lS2}>Note</label>
-                    <textarea value={newEvent.note} onChange={e=>setNewEvent({...newEvent,note:e.target.value})} placeholder="Contexte, objectifs..." style={{...iS2,resize:"vertical",minHeight:60,lineHeight:1.6}}/>
-                  </div>
-                  <div style={{display:"flex",gap:10}}>
-                    <button onClick={async()=>{
-                      if(!newEvent.titre||!newEvent.date) return;
-                      const data = {...newEvent, done:false, user_id:currentUser.id};
-                      const created = await supa.insert('agenda', data);
-                      if(created) setAgendaEvents(a=>[...a,{...data,id:created.id}]);
-                      setNewEvent({date:"",heure:"",titre:"",type:"rdv",note:""});
-                      setShowAddEvent(false);
-                    }} style={{...bP,flex:1,padding:13,fontSize:12}}>Ajouter</button>
-                    <button onClick={()=>setShowAddEvent(false)} style={{...bS,flex:1,padding:13}}>Annuler</button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          <AgendaBlock
+            agendaEvents={agendaEvents} setAgendaEvents={setAgendaEvents}
+            agendaMois={agendaMois} setAgendaMois={setAgendaMois}
+            showAddEvent={showAddEvent} setShowAddEvent={setShowAddEvent}
+            newEvent={newEvent} setNewEvent={setNewEvent}
+            currentUser={currentUser} bP={bP} bS={bS} iS2={iS2} lS2={lS2}
+          />
         )}
 
         {/* ══════════════ MODULE RAPPORTS ══════════════ */}
@@ -1944,6 +1927,17 @@ export default function LNDUnifie() {
             {/* RAPPELS COM */}
             {comView==="rappels"&&(
               <VueRappelsCom prospects={filteredProspects} onOpen={r=>setComSelected(r)}/>
+            )}
+
+            {/* AGENDA COM */}
+            {comView==="agenda"&&(
+              <AgendaBlock
+                agendaEvents={agendaEvents} setAgendaEvents={setAgendaEvents}
+                agendaMois={agendaMois} setAgendaMois={setAgendaMois}
+                showAddEvent={showAddEvent} setShowAddEvent={setShowAddEvent}
+                newEvent={newEvent} setNewEvent={setNewEvent}
+                currentUser={currentUser} bP={bP} bS={bS} iS2={iS2} lS2={lS2}
+              />
             )}
 
             {/* FICHE COMMERCIALE */}
