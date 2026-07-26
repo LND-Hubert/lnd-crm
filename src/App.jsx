@@ -917,6 +917,17 @@ export default function LNDUnifie() {
   // MODULE (président : op | commercial | rapport)
   const [module,setModule]=useState("op");
   const [periodeRapport,setPeriodeRapport]=useState("mensuel");
+  const [sidebarOpen,setSidebarOpen]=useState(false);
+
+  // AGENDA state
+  const [agendaEvents,setAgendaEvents]=useState([
+    {id:1,date:"2026-07-28",heure:"10:00",titre:"RDV Brasserie Le Central",type:"rdv",note:"Bilan mensuel Q2",done:false},
+    {id:2,date:"2026-07-30",heure:"14:30",titre:"Appel prospects Lyon",type:"appel",note:"Relance La Terrasse Dorée",done:false},
+    {id:3,date:"2026-08-05",heure:"09:00",titre:"Audit nouveau restaurant",type:"audit",note:"",done:false},
+  ]);
+  const [showAddEvent,setShowAddEvent]=useState(false);
+  const [newEvent,setNewEvent]=useState({date:"",heure:"",titre:"",type:"rdv",note:""});
+  const [agendaMois,setAgendaMois]=useState(new Date().toISOString().slice(0,7));
 
   // ── TOUS LES useMemo DOIVENT ÊTRE AVANT TOUT RETURN CONDITIONNEL ──
   const filteredProspects=useMemo(()=>prospects.filter(r=>{
@@ -993,70 +1004,236 @@ export default function LNDUnifie() {
   ];
   const activeNavItems=showRapportModule
     ?[{id:"mensuel",icon:"📅",label:"Mensuel"},{id:"trimestriel",icon:"📆",label:"Trimestriel"},{id:"annuel",icon:"🗓",label:"Annuel"}]
-    :showCommercialModule?comNavItems:opNavItems;
+    :showCommercialModule?comNavItems
+    :(isPresident||isCommercial)?[...opNavItems,{id:"agenda",icon:"📅",label:"Agenda"}]
+    :[...opNavItems,{id:"agenda",icon:"📅",label:"Agenda"}];
   const activeView=showRapportModule?periodeRapport:showCommercialModule?comView:opView;
   const setActiveView=showRapportModule?setPeriodeRapport:showCommercialModule?setComView:setOpView;
 
   return (
     <div style={{fontFamily:"Georgia,serif",background:CREAM,minHeight:"100vh",color:NAVY,display:"flex"}}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&display=swap');`}</style>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&display=swap');
+        .sidebar-overlay{display:none}
+        @media(max-width:768px){
+          .sidebar-desktop{display:none!important}
+          .sidebar-overlay{display:block;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:199}
+          .sidebar-mobile{position:fixed!important;left:0;top:0;bottom:0;z-index:200;transform:translateX(-100%);transition:transform 0.3s ease}
+          .sidebar-mobile.open{transform:translateX(0)}
+          .hamburger{display:flex!important}
+          .main-content{padding:16px!important}
+        }
+        @media(min-width:769px){
+          .hamburger{display:none!important}
+        }
+      `}</style>
 
-      {/* ── SIDEBAR ── */}
-      <div style={{width:230,background:NAVY,display:"flex",flexDirection:"column",flexShrink:0,position:"sticky",top:0,height:"100vh"}}>
-        <div style={{padding:"26px 24px 20px",borderBottom:"1px solid rgba(184,150,62,0.2)"}}>
-          <div style={{fontSize:36,fontWeight:700,color:CREAM,letterSpacing:-1.5,lineHeight:1,fontFamily:"'Cormorant Garamond',Georgia,serif"}}>LND</div>
-          <div style={{fontSize:8,letterSpacing:3,color:GOLD,textTransform:"uppercase",marginTop:4,fontWeight:700,fontFamily:"sans-serif"}}>
-            {showRapportModule?"Rapports":showCommercialModule?"CRM Commercial":"CRM Opérationnel"}
-          </div>
-        </div>
-        {/* User */}
-        <div style={{padding:"12px 20px",borderBottom:"1px solid rgba(184,150,62,0.12)",display:"flex",alignItems:"center",gap:10}}>
-          <div style={{width:32,height:32,borderRadius:"50%",background:GOLD,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:NAVY,flexShrink:0,fontFamily:"sans-serif"}}>{currentUser.avatar}</div>
-          <div>
-            <div style={{fontSize:11,fontWeight:700,color:CREAM,fontFamily:"sans-serif"}}>{currentUser.name}</div>
-            <div style={{fontSize:9,color:GOLD,fontFamily:"sans-serif",letterSpacing:1}}>{currentUser.role==="president"?"Président":currentUser.role==="commercial"?"Dir. Commerciale":"Directeur"}</div>
-          </div>
-        </div>
+      {/* Overlay mobile */}
+      {sidebarOpen&&<div className="sidebar-overlay" onClick={()=>setSidebarOpen(false)}/>}
 
-        {/* Switch module (président seulement) */}
-        {isPresident&&(
-          <div style={{padding:"10px 10px",borderBottom:"1px solid rgba(184,150,62,0.12)"}}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:3}}>
-              {[{id:"op",label:"Opérat.",icon:"⚙"},{id:"commercial",label:"Com.",icon:"💼"},{id:"rapport",label:"Rapports",icon:"📊"}].map(m=>(
-                <button key={m.id} onClick={()=>setModule(m.id)} style={{padding:"7px 4px",borderRadius:5,border:`1px solid ${module===m.id?GOLD:"rgba(184,150,62,0.2)"}`,background:module===m.id?"rgba(184,150,62,0.18)":"transparent",color:module===m.id?GOLD:"rgba(245,240,234,0.45)",fontSize:9,fontWeight:600,cursor:"pointer",fontFamily:"sans-serif",textAlign:"center",lineHeight:1.4}}>
-                  <div>{m.icon}</div><div>{m.label}</div>
-                </button>
-              ))}
+      {/* Bouton hamburger mobile */}
+      <button className="hamburger" onClick={()=>setSidebarOpen(v=>!v)} style={{display:"none",position:"fixed",top:12,left:12,zIndex:300,background:NAVY,border:`1px solid ${GOLD}`,borderRadius:6,padding:"8px 10px",cursor:"pointer",flexDirection:"column",gap:4}}>
+        <div style={{width:18,height:2,background:GOLD,borderRadius:1}}/>
+        <div style={{width:18,height:2,background:GOLD,borderRadius:1}}/>
+        <div style={{width:18,height:2,background:GOLD,borderRadius:1}}/>
+      </button>
+
+      {/* ── SIDEBAR (desktop fixe + mobile drawer) ── */}
+      {[false,true].map(isMobile=>(
+        <div key={isMobile?"mobile":"desktop"}
+          className={isMobile?`sidebar-mobile${sidebarOpen?" open":""}`:"sidebar-desktop"}
+          style={{width:230,background:NAVY,display:"flex",flexDirection:"column",flexShrink:0,...(isMobile?{}:{position:"sticky",top:0,height:"100vh"})}}>
+          <div style={{padding:"26px 24px 20px",borderBottom:"1px solid rgba(184,150,62,0.2)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div>
+              <div style={{fontSize:36,fontWeight:700,color:CREAM,letterSpacing:-1.5,lineHeight:1,fontFamily:"'Cormorant Garamond',Georgia,serif"}}>LND</div>
+              <div style={{fontSize:8,letterSpacing:3,color:GOLD,textTransform:"uppercase",marginTop:4,fontWeight:700,fontFamily:"sans-serif"}}>
+                {showRapportModule?"Rapports":showCommercialModule?"CRM Commercial":"CRM Opérationnel"}
+              </div>
+            </div>
+            {isMobile&&<button onClick={()=>setSidebarOpen(false)} style={{background:"none",border:"none",color:"rgba(245,240,234,0.5)",fontSize:20,cursor:"pointer",lineHeight:1}}>✕</button>}
+          </div>
+
+          {/* User */}
+          <div style={{padding:"12px 20px",borderBottom:"1px solid rgba(184,150,62,0.12)",display:"flex",alignItems:"center",gap:10}}>
+            <div style={{width:32,height:32,borderRadius:"50%",background:GOLD,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:NAVY,flexShrink:0,fontFamily:"sans-serif"}}>{currentUser.avatar}</div>
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:CREAM,fontFamily:"sans-serif"}}>{currentUser.name}</div>
+              <div style={{fontSize:9,color:GOLD,fontFamily:"sans-serif",letterSpacing:1}}>{currentUser.role==="president"?"Président":currentUser.role==="commercial"?"Dir. Commerciale":"Directeur"}</div>
             </div>
           </div>
-        )}
 
-        <nav style={{padding:"12px 10px",flex:1}}>
-          {activeNavItems.map(item=>(
-            <button key={item.id} onClick={()=>setActiveView(item.id)} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"11px 14px",borderRadius:6,border:"none",cursor:"pointer",fontFamily:"sans-serif",fontSize:12,fontWeight:600,marginBottom:2,textAlign:"left",background:activeView===item.id?"rgba(184,150,62,0.15)":"transparent",color:activeView===item.id?GOLD:"rgba(245,240,234,0.5)",borderLeft:activeView===item.id?`3px solid ${GOLD}`:"3px solid transparent"}}>
-              <span>{item.icon}</span>{item.label}
-            </button>
-          ))}
-        </nav>
+          {/* Switch module */}
+          {isPresident&&(
+            <div style={{padding:"10px 10px",borderBottom:"1px solid rgba(184,150,62,0.12)"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:3}}>
+                {[{id:"op",label:"Opérat.",icon:"⚙"},{id:"commercial",label:"Com.",icon:"💼"},{id:"rapport",label:"Rapports",icon:"📊"}].map(m=>(
+                  <button key={m.id} onClick={()=>{setModule(m.id);if(isMobile)setSidebarOpen(false);}} style={{padding:"7px 4px",borderRadius:5,border:`1px solid ${module===m.id?GOLD:"rgba(184,150,62,0.2)"}`,background:module===m.id?"rgba(184,150,62,0.18)":"transparent",color:module===m.id?GOLD:"rgba(245,240,234,0.45)",fontSize:9,fontWeight:600,cursor:"pointer",fontFamily:"sans-serif",textAlign:"center",lineHeight:1.4}}>
+                    <div>{m.icon}</div><div>{m.label}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
-        <div style={{padding:"12px 20px",borderTop:"1px solid rgba(184,150,62,0.15)"}}>
-          {showCommercialModule
-            ?<>
-              <div style={{fontSize:11,color:"rgba(245,240,234,0.4)",marginBottom:2,fontFamily:"sans-serif"}}>{comStats.valides} clients actifs</div>
-              {comStats.revForfaits>0&&<div style={{fontSize:11,color:GOLD_L,marginBottom:2,fontFamily:"sans-serif"}}>📋 {comStats.revForfaits.toLocaleString("fr-FR")} €/mois</div>}
-              {comStats.rappelsUrgents>0&&<div style={{fontSize:11,color:RED,marginBottom:4,fontFamily:"sans-serif"}}>⚠ {comStats.rappelsUrgents} rappel{comStats.rappelsUrgents>1?"s":""}</div>}
-            </>
-            :<>
-              <div style={{fontSize:11,color:"rgba(245,240,234,0.4)",marginBottom:2,fontFamily:"sans-serif"}}>{opStats.active} restaurants actifs</div>
-              {opStats.alerts>0&&<div style={{fontSize:11,color:GOLD,marginBottom:2,fontFamily:"sans-serif"}}>⚠ {opStats.alerts} alerte{opStats.alerts>1?"s":""}</div>}
-            </>
-          }
-          <button onClick={()=>setCurrentUser(null)} style={{fontSize:11,color:"rgba(245,240,234,0.3)",background:"none",border:"none",cursor:"pointer",fontFamily:"sans-serif",padding:0,marginTop:4}}>← Déconnexion</button>
+          <nav style={{padding:"12px 10px",flex:1,overflowY:"auto"}}>
+            {activeNavItems.map(item=>(
+              <button key={item.id} onClick={()=>{setActiveView(item.id);if(isMobile)setSidebarOpen(false);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"11px 14px",borderRadius:6,border:"none",cursor:"pointer",fontFamily:"sans-serif",fontSize:12,fontWeight:600,marginBottom:2,textAlign:"left",background:activeView===item.id?"rgba(184,150,62,0.15)":"transparent",color:activeView===item.id?GOLD:"rgba(245,240,234,0.5)",borderLeft:activeView===item.id?`3px solid ${GOLD}`:"3px solid transparent"}}>
+                <span>{item.icon}</span>{item.label}
+              </button>
+            ))}
+          </nav>
+
+          <div style={{padding:"12px 20px",borderTop:"1px solid rgba(184,150,62,0.15)"}}>
+            {showCommercialModule
+              ?<>
+                <div style={{fontSize:11,color:"rgba(245,240,234,0.4)",marginBottom:2,fontFamily:"sans-serif"}}>{comStats.valides} clients actifs</div>
+                {comStats.revForfaits>0&&<div style={{fontSize:11,color:GOLD_L,marginBottom:2,fontFamily:"sans-serif"}}>📋 {comStats.revForfaits.toLocaleString("fr-FR")} €/mois</div>}
+                {comStats.rappelsUrgents>0&&<div style={{fontSize:11,color:RED,marginBottom:4,fontFamily:"sans-serif"}}>⚠ {comStats.rappelsUrgents} rappel{comStats.rappelsUrgents>1?"s":""}</div>}
+              </>
+              :<>
+                <div style={{fontSize:11,color:"rgba(245,240,234,0.4)",marginBottom:2,fontFamily:"sans-serif"}}>{opStats.active} restaurants actifs</div>
+                {opStats.alerts>0&&<div style={{fontSize:11,color:GOLD,marginBottom:2,fontFamily:"sans-serif"}}>⚠ {opStats.alerts} alerte{opStats.alerts>1?"s":""}</div>}
+              </>
+            }
+            <button onClick={()=>setCurrentUser(null)} style={{fontSize:11,color:"rgba(245,240,234,0.3)",background:"none",border:"none",cursor:"pointer",fontFamily:"sans-serif",padding:0,marginTop:4}}>← Déconnexion</button>
+          </div>
         </div>
-      </div>
+      ))}
 
       {/* ── MAIN ── */}
-      <div style={{flex:1,padding:"32px 36px",overflowY:"auto",minWidth:0}}>
+      <div className="main-content" style={{flex:1,padding:"32px 36px",overflowY:"auto",minWidth:0}}>
+
+
+        {/* ══════════════ AGENDA ══════════════ */}
+        {!showCommercialModule&&!showRapportModule&&opView==="agenda"&&(
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:28}}>
+              <div>
+                <div style={{fontSize:9,letterSpacing:4,color:GOLD,textTransform:"uppercase",marginBottom:7,fontWeight:600,fontFamily:"sans-serif"}}>Planning</div>
+                <h1 style={{fontSize:28,fontWeight:700,margin:0,letterSpacing:-0.5,fontFamily:"'Cormorant Garamond',Georgia,serif"}}>Agenda</h1>
+                <div style={{width:36,height:2,background:GOLD,marginTop:8}}/>
+              </div>
+              <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                <input type="month" value={agendaMois} onChange={e=>setAgendaMois(e.target.value)} style={{padding:"9px 14px",borderRadius:6,border:"1px solid rgba(27,42,74,0.2)",fontSize:13,outline:"none",background:WHITE,color:NAVY,fontFamily:"sans-serif"}}/>
+                <button onClick={()=>setShowAddEvent(true)} style={bP}>+ Événement</button>
+              </div>
+            </div>
+
+            {/* Stats rapides */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:24}}>
+              {[
+                {label:"Total ce mois",val:agendaEvents.filter(e=>e.date.startsWith(agendaMois)).length,accent:GOLD},
+                {label:"RDV",val:agendaEvents.filter(e=>e.date.startsWith(agendaMois)&&e.type==="rdv").length,accent:NAVY},
+                {label:"Appels",val:agendaEvents.filter(e=>e.date.startsWith(agendaMois)&&e.type==="appel").length,accent:NAVY2},
+                {label:"À venir",val:agendaEvents.filter(e=>new Date(e.date)>=new Date()&&!e.done).length,accent:GREEN},
+              ].map((k,i)=>(
+                <div key={i} style={{background:WHITE,borderRadius:8,padding:"16px 18px",boxShadow:"0 2px 12px rgba(27,42,74,0.07)",borderLeft:`4px solid ${k.accent}`}}>
+                  <div style={{fontSize:9,color:"#aaa",letterSpacing:2,textTransform:"uppercase",fontWeight:600,marginBottom:5,fontFamily:"sans-serif"}}>{k.label}</div>
+                  <div style={{fontSize:26,fontWeight:700,color:k.accent,fontFamily:"'Cormorant Garamond',serif"}}>{k.val}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Liste événements du mois */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+              {/* Colonne à venir */}
+              <div>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",color:NAVY,marginBottom:14,fontFamily:"sans-serif"}}>📅 À venir</div>
+                {agendaEvents
+                  .filter(e=>e.date.startsWith(agendaMois)&&new Date(e.date)>=new Date()&&!e.done)
+                  .sort((a,b)=>a.date.localeCompare(b.date)||a.heure.localeCompare(b.heure))
+                  .map(ev=>{
+                    const typeColor={rdv:GOLD,appel:NAVY2,audit:"#8e44ad",note:"#27ae60"}[ev.type]||GOLD;
+                    return (
+                      <div key={ev.id} style={{background:WHITE,borderRadius:8,padding:"16px 18px",marginBottom:10,boxShadow:"0 2px 12px rgba(27,42,74,0.07)",borderLeft:`4px solid ${typeColor}`}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                          <div>
+                            <div style={{fontSize:13,fontWeight:700,color:NAVY,marginBottom:2}}>{ev.titre}</div>
+                            <div style={{fontSize:11,color:"#aaa",fontFamily:"sans-serif"}}>
+                              {new Date(ev.date).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})} {ev.heure&&`· ${ev.heure}`}
+                            </div>
+                          </div>
+                          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                            <span style={{fontSize:9,background:typeColor+"20",color:typeColor,padding:"3px 8px",borderRadius:3,fontWeight:700,fontFamily:"sans-serif",textTransform:"uppercase"}}>{ev.type}</span>
+                            <button onClick={()=>setAgendaEvents(a=>a.map(x=>x.id===ev.id?{...x,done:true}:x))} style={{background:"none",border:`1px solid ${GREEN}`,borderRadius:4,color:GREEN,fontSize:10,cursor:"pointer",padding:"3px 7px",fontFamily:"sans-serif",fontWeight:700}}>✓</button>
+                            <button onClick={()=>setAgendaEvents(a=>a.filter(x=>x.id!==ev.id))} style={{background:"none",border:"1px solid #ddd",borderRadius:4,color:"#ccc",fontSize:12,cursor:"pointer",padding:"2px 6px",lineHeight:1}}>✕</button>
+                          </div>
+                        </div>
+                        {ev.note&&<div style={{fontSize:12,color:"#888",fontFamily:"sans-serif",fontStyle:"italic",paddingTop:6,borderTop:`1px solid ${CREAM}`}}>{ev.note}</div>}
+                      </div>
+                    );
+                  })}
+                {agendaEvents.filter(e=>e.date.startsWith(agendaMois)&&new Date(e.date)>=new Date()&&!e.done).length===0&&
+                  <div style={{color:"#bbb",fontSize:13,fontFamily:"sans-serif",padding:"20px 0"}}>Aucun événement à venir ce mois-ci.</div>}
+              </div>
+
+              {/* Colonne passés/faits */}
+              <div>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",color:"#aaa",marginBottom:14,fontFamily:"sans-serif"}}>✓ Réalisés</div>
+                {agendaEvents
+                  .filter(e=>e.date.startsWith(agendaMois)&&(new Date(e.date)<new Date()||e.done))
+                  .sort((a,b)=>b.date.localeCompare(a.date))
+                  .map(ev=>{
+                    const typeColor={rdv:GOLD,appel:NAVY2,audit:"#8e44ad",note:"#27ae60"}[ev.type]||GOLD;
+                    return (
+                      <div key={ev.id} style={{background:WHITE,borderRadius:8,padding:"14px 18px",marginBottom:8,boxShadow:"0 1px 6px rgba(27,42,74,0.05)",borderLeft:`4px solid #ddd`,opacity:0.7}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                          <div>
+                            <div style={{fontSize:13,fontWeight:600,color:"#888",textDecoration:"line-through",marginBottom:2}}>{ev.titre}</div>
+                            <div style={{fontSize:11,color:"#bbb",fontFamily:"sans-serif"}}>
+                              {new Date(ev.date).toLocaleDateString("fr-FR",{day:"numeric",month:"long"})} {ev.heure&&`· ${ev.heure}`}
+                            </div>
+                          </div>
+                          <button onClick={()=>setAgendaEvents(a=>a.filter(x=>x.id!==ev.id))} style={{background:"none",border:"none",color:"#ddd",cursor:"pointer",fontSize:14}}>✕</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                {agendaEvents.filter(e=>e.date.startsWith(agendaMois)&&(new Date(e.date)<new Date()||e.done)).length===0&&
+                  <div style={{color:"#ccc",fontSize:13,fontFamily:"sans-serif",padding:"20px 0"}}>Aucun événement passé.</div>}
+              </div>
+            </div>
+
+            {/* Modal ajout événement */}
+            {showAddEvent&&(
+              <div style={{position:"fixed",inset:0,background:"rgba(27,42,74,0.6)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <div style={{background:WHITE,borderRadius:10,padding:34,width:460,boxShadow:"0 30px 80px rgba(0,0,0,0.3)",borderTop:`4px solid ${GOLD}`}}>
+                  <h2 style={{fontSize:20,fontWeight:700,margin:"0 0 22px",color:NAVY}}>Nouvel événement</h2>
+                  <div style={{marginBottom:13}}>
+                    <label style={lS2}>Titre</label>
+                    <input value={newEvent.titre} onChange={e=>setNewEvent({...newEvent,titre:e.target.value})} placeholder="RDV client, Appel, Audit..." style={iS2}/>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:13}}>
+                    <div><label style={lS2}>Date</label><input type="date" value={newEvent.date} onChange={e=>setNewEvent({...newEvent,date:e.target.value})} style={iS2}/></div>
+                    <div><label style={lS2}>Heure</label><input type="time" value={newEvent.heure} onChange={e=>setNewEvent({...newEvent,heure:e.target.value})} style={iS2}/></div>
+                  </div>
+                  <div style={{marginBottom:13}}>
+                    <label style={lS2}>Type</label>
+                    <select value={newEvent.type} onChange={e=>setNewEvent({...newEvent,type:e.target.value})} style={{...iS2,background:WHITE,cursor:"pointer"}}>
+                      <option value="rdv">RDV</option>
+                      <option value="appel">Appel</option>
+                      <option value="audit">Audit</option>
+                      <option value="note">Note</option>
+                    </select>
+                  </div>
+                  <div style={{marginBottom:20}}>
+                    <label style={lS2}>Note</label>
+                    <textarea value={newEvent.note} onChange={e=>setNewEvent({...newEvent,note:e.target.value})} placeholder="Contexte, objectifs..." style={{...iS2,resize:"vertical",minHeight:60,lineHeight:1.6}}/>
+                  </div>
+                  <div style={{display:"flex",gap:10}}>
+                    <button onClick={()=>{
+                      if(!newEvent.titre||!newEvent.date) return;
+                      setAgendaEvents(a=>[...a,{...newEvent,id:Date.now(),done:false}]);
+                      setNewEvent({date:"",heure:"",titre:"",type:"rdv",note:""});
+                      setShowAddEvent(false);
+                    }} style={{...bP,flex:1,padding:13,fontSize:12}}>Ajouter</button>
+                    <button onClick={()=>setShowAddEvent(false)} style={{...bS,flex:1,padding:13}}>Annuler</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ══════════════ MODULE RAPPORTS ══════════════ */}
         {showRapportModule&&(
