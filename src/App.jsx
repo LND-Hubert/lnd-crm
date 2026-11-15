@@ -355,7 +355,7 @@ function CompteExploitation({restaurant}) {
 }
 
 // ── FICHE COMMERCIAL ──────────────────────────────────────────────────
-function FicheCommerciale({resto,onClose,onSave}) {
+function FicheCommerciale({resto,onClose,onSave,devisList=[],onOpenDevis}) {
   const [data,setData]=useState({...resto,caHistory:resto.caHistory||Array(12).fill(0),forfaits:resto.forfaits||[]});
   const [newRDate,setNewRDate]=useState("");
   const [newRNote,setNewRNote]=useState("");
@@ -505,6 +505,24 @@ function FicheCommerciale({resto,onClose,onSave}) {
               ))}
             </div>
           </div>
+          {/* Devis liés */}
+          {data.id&&(()=>{
+            const ds=devisList.filter(d=>String(d.prospect_id)===String(data.id)).sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
+            return (
+              <div style={{marginBottom:20}}>
+                <div style={{fontSize:10,letterSpacing:2,textTransform:"uppercase",color:NAVY,fontWeight:700,marginBottom:10}}>📄 Devis ({ds.length})</div>
+                {ds.length===0&&<div style={{fontSize:12,color:"#bbb",fontFamily:"sans-serif"}}>Aucun devis lié. Crée-le depuis « Devis événementiel » en choisissant ce prospect.</div>}
+                {ds.map(d=>(
+                  <div key={d.id} onClick={()=>onOpenDevis&&onOpenDevis(d)} style={{display:"flex",alignItems:"center",gap:12,background:CREAM,borderRadius:5,padding:"9px 12px",marginBottom:5,cursor:onOpenDevis?"pointer":"default",borderLeft:`3px solid ${GOLD}`}}>
+                    <div style={{fontSize:12,fontWeight:700,color:NAVY,fontFamily:"sans-serif",minWidth:100}}>{d.numero}</div>
+                    <div style={{flex:1,fontSize:12,color:"#666",fontFamily:"sans-serif"}}>{d.evenement||"—"} · {fmtDate(d.created_at)}{d.ref_pennylane?` · ${d.ref_pennylane}`:""}</div>
+                    <StatutBadge statut={d.statut}/>
+                    <div style={{fontSize:14,fontWeight:700,color:NAVY,fontFamily:"'Cormorant Garamond',serif",minWidth:90,textAlign:"right"}}>{(+d.total_ht||0).toLocaleString("fr-FR")} € HT</div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
           {/* Notes */}
           <div style={{marginBottom:20}}>
             <label style={lS}>Notes libres</label>
@@ -536,7 +554,7 @@ function FicheCommerciale({resto,onClose,onSave}) {
             </div>
           </div>
           <div style={{display:"flex",gap:10,marginTop:22}}>
-            <button onClick={()=>onSave(data)} style={{flex:1,background:NAVY,color:CREAM,border:`1px solid ${GOLD}`,borderRadius:6,padding:13,fontSize:12,fontWeight:700,cursor:"pointer",letterSpacing:1.5,textTransform:"uppercase"}}>Enregistrer</button>
+            <button onClick={()=>{if(!(data.nom||"").trim()){alert("Indique le nom du restaurant (en haut de la fiche) avant d'enregistrer.");return;}onSave(data);}} style={{flex:1,background:NAVY,color:CREAM,border:`1px solid ${GOLD}`,borderRadius:6,padding:13,fontSize:12,fontWeight:700,cursor:"pointer",letterSpacing:1.5,textTransform:"uppercase"}}>Enregistrer</button>
             <button onClick={onClose} style={{flex:1,background:WHITE,color:NAVY,border:"1px solid rgba(27,42,74,0.2)",borderRadius:6,padding:13,fontSize:12,cursor:"pointer"}}>Annuler</button>
           </div>
         </div>
@@ -1679,8 +1697,51 @@ const DEVIS_OPTIONS = [
   {id:"astreinte",t:"Astreinte téléphonique",s:"Joignable hors présence sur site (par jour)",qty:true,unit:"jour",jours:0,defQ:3},
   {id:"audit",t:"Audit post-événement chiffré",s:"Ventes, masse salariale, ratios, plan d'action",qty:false,unit:"forfait",jours:2},
 ];
+const DEVIS_STATUTS = {
+  "Brouillon":{bg:"#F3F4F6",color:"#6B7280"},
+  "Envoyé":{bg:"#EEF2FA",color:"#3A5A9A"},
+  "Accepté":{bg:"#E3F5E8",color:"#145228"},
+  "Refusé":{bg:"#FDEAEA",color:"#8B2020"},
+  "Facturé":{bg:"#FDF6E3",color:"#8A6500"},
+};
 const eur = n => (n||0).toLocaleString("fr-FR",{style:"currency",currency:"EUR",maximumFractionDigits:2});
 const fjr = j => String(Math.round(j*100)/100).replace(".",",");
+const devisEmptyForm = () => ({
+  prospectId:"", client:"", event:"", lieu:"", dates:"", refPennylane:"",
+  formule:"std", prepJours:4, siteJours:6, installJours:0, hsH:0, mgrNb:0, mgrJours:0,
+  opts:Object.fromEntries(DEVIS_OPTIONS.map(o=>[o.id,{on:!!o.def,q:o.defQ||1}])),
+  urg:false, urgPct:20, prem:false, premPct:10, remPct:0, fDep:0, fHeb:0, fRep:0, acompte:40,
+});
+function loadDevisRates(){try{const s=localStorage.getItem("lnd_devis_rates");return s?{...DEVIS_RATES_DEFAULT,...JSON.parse(s)}:DEVIS_RATES_DEFAULT;}catch{return DEVIS_RATES_DEFAULT;}}
+
+function calcDevis(f,R){
+  const num=v=>parseFloat(v)||0;
+  const lines=[]; let jours=0;
+  const fObj=DEVIS_FORMULES.find(x=>x.id===f.formule)||DEVIS_FORMULES[1];
+  const pj=f.formule==="sm"?num(f.prepJours):(fObj.j||0);
+  jours+=pj;
+  if(pj) lines.push({t:`Conseil & préparation de l'exploitation${f.formule!=="sm"?` – formule ${fObj.t}`:""}`,q:pj,u:"jour",pu:R.tjmConseil,tot:pj*R.tjmConseil,grp:"prep"});
+  const ij=num(f.installJours), sj=num(f.siteJours), hs=num(f.hsH), mn=num(f.mgrNb), mj=num(f.mgrJours);
+  jours+=ij+sj;
+  if(ij) lines.push({t:"Installation & mise en place avant ouverture",q:ij,u:"jour",pu:R.install,tot:ij*R.install,grp:"site"});
+  if(sj) lines.push({t:"Direction opérationnelle sur site (encadrement + conseil au dirigeant)",q:sj,u:"jour",pu:R.tjmSite,tot:sj*R.tjmSite,grp:"site"});
+  if(hs) lines.push({t:"Heures au-delà de 12 h / nuit",q:hs,u:"heure",pu:R.hs,tot:hs*R.hs,grp:"site"});
+  if(mn&&mj) lines.push({t:`Manager LND supplémentaire (${mn} × ${fjr(mj)} j)`,q:mn*mj,u:"jour",pu:R.mgr,tot:mn*mj*R.mgr,grp:"site"});
+  DEVIS_OPTIONS.forEach(o=>{
+    const st=(f.opts||{})[o.id]; if(!st||!st.on) return;
+    const q=o.qty?Math.max(1,num(st.q)):1;
+    lines.push({t:o.t,q,u:o.unit,pu:R[o.id],tot:q*R[o.id],grp:"opt"});
+    jours+=o.jours*q;
+  });
+  const presta=lines.reduce((s,l)=>s+l.tot,0);
+  const urgA=f.urg?presta*num(f.urgPct)/100:0;
+  const premA=f.prem?presta*num(f.premPct)/100:0;
+  const remA=(presta+urgA+premA)*num(f.remPct)/100;
+  const frais=num(f.fDep)+num(f.fHeb)+num(f.fRep);
+  const ht=presta+urgA+premA-remA+frais, tva=ht*R.tva/100, ttc=ht+tva;
+  const sumGrp=g=>lines.filter(l=>l.grp===g).reduce((s,l)=>s+l.tot,0);
+  return {lines,jours,pj,sj,presta,urgA,premA,remA,frais,ht,tva,ttc,hon:ht-frais,sumGrp};
+}
 
 function DevisRow({label,sub,children,amount}) {
   return (
@@ -1716,110 +1777,114 @@ function DevisCard({n,title,hint,children}) {
   );
 }
 
-function ModuleDevis({prospects,onAttach}) {
-  const [rates,setRates]=useState(()=>{try{const s=localStorage.getItem("lnd_devis_rates");return s?{...DEVIS_RATES_DEFAULT,...JSON.parse(s)}:DEVIS_RATES_DEFAULT;}catch{return DEVIS_RATES_DEFAULT;}});
+function StatutBadge({statut}) {
+  const s=DEVIS_STATUTS[statut]||DEVIS_STATUTS["Brouillon"];
+  return <span style={{background:s.bg,color:s.color,padding:"3px 9px",borderRadius:3,fontSize:11,fontWeight:700,fontFamily:"sans-serif",whiteSpace:"nowrap"}}>{statut||"Brouillon"}</span>;
+}
+
+function ModuleDevis({prospects,devisList,setDevisList,currentUser}) {
+  const [tab,setTab]=useState("form");
+  const [rates,setRates]=useState(loadDevisRates);
   const [showRates,setShowRates]=useState(false);
   const [draftRates,setDraftRates]=useState(rates);
-  const [prospectId,setProspectId]=useState("");
-  const [client,setClient]=useState("");
-  const [event,setEvent]=useState("");
-  const [lieu,setLieu]=useState("");
-  const [dates,setDates]=useState("");
-  const [formule,setFormule]=useState("std");
-  const [prepJours,setPrepJours]=useState(4);
-  const [siteJours,setSiteJours]=useState(6);
-  const [installJours,setInstallJours]=useState(0);
-  const [hsH,setHsH]=useState(0);
-  const [mgrNb,setMgrNb]=useState(0);
-  const [mgrJours,setMgrJours]=useState(0);
-  const [opts,setOpts]=useState(()=>Object.fromEntries(DEVIS_OPTIONS.map(o=>[o.id,{on:!!o.def,q:o.defQ||1}])));
-  const [urg,setUrg]=useState(false);
-  const [urgPct,setUrgPct]=useState(20);
-  const [prem,setPrem]=useState(false);
-  const [premPct,setPremPct]=useState(10);
-  const [remPct,setRemPct]=useState(0);
-  const [fDep,setFDep]=useState(0);
-  const [fHeb,setFHeb]=useState(0);
-  const [fRep,setFRep]=useState(0);
-  const [acompte,setAcompte]=useState(40);
+  const [f,setF]=useState(devisEmptyForm);
+  const [editId,setEditId]=useState(null);
+  const [editNumero,setEditNumero]=useState("");
+  const [statut,setStatut]=useState("Brouillon");
+  const [saving,setSaving]=useState(false);
   const [showText,setShowText]=useState(false);
   const [msg,setMsg]=useState("");
+  const [listFilter,setListFilter]=useState("Tous");
 
+  const set=(k,v)=>setF(x=>({...x,[k]:v}));
+  const setOpt=(id,k,v)=>setF(x=>({...x,opts:{...x.opts,[id]:{...x.opts[id],[k]:v}}}));
   const num=v=>parseFloat(v)||0;
   const R=rates;
-
-  // ── Calcul ──
-  const lines=[];
-  let jours=0;
-  const fObj=DEVIS_FORMULES.find(f=>f.id===formule);
-  const pj=formule==="sm"?num(prepJours):(fObj.j||0);
-  const prep=pj*R.tjmConseil; jours+=pj;
-  if(pj) lines.push({t:`Conseil & préparation de l'exploitation${formule!=="sm"?` – formule ${fObj.t}`:""}`,q:pj,u:"jour",pu:R.tjmConseil,tot:prep,grp:"prep"});
-  const ij=num(installJours), sj=num(siteJours), hs=num(hsH), mn=num(mgrNb), mj=num(mgrJours);
-  jours+=ij+sj;
-  if(ij) lines.push({t:"Installation & mise en place avant ouverture",q:ij,u:"jour",pu:R.install,tot:ij*R.install,grp:"site"});
-  if(sj) lines.push({t:"Direction opérationnelle sur site (encadrement + conseil au dirigeant)",q:sj,u:"jour",pu:R.tjmSite,tot:sj*R.tjmSite,grp:"site"});
-  if(hs) lines.push({t:"Heures au-delà de 12 h / nuit",q:hs,u:"heure",pu:R.hs,tot:hs*R.hs,grp:"site"});
-  if(mn&&mj) lines.push({t:`Manager LND supplémentaire (${mn} × ${fjr(mj)} j)`,q:mn*mj,u:"jour",pu:R.mgr,tot:mn*mj*R.mgr,grp:"site"});
-  DEVIS_OPTIONS.forEach(o=>{
-    const st=opts[o.id]; if(!st.on) return;
-    const q=o.qty?Math.max(1,num(st.q)):1;
-    lines.push({t:o.t,q,u:o.unit,pu:R[o.id],tot:q*R[o.id],grp:"opt"});
-    jours+=o.jours*q;
-  });
-  const presta=lines.reduce((s,l)=>s+l.tot,0);
-  const sumGrp=g=>lines.filter(l=>l.grp===g).reduce((s,l)=>s+l.tot,0);
-  const urgA=urg?presta*num(urgPct)/100:0;
-  const premA=prem?presta*num(premPct)/100:0;
-  const remA=(presta+urgA+premA)*num(remPct)/100;
-  const frais=num(fDep)+num(fHeb)+num(fRep);
-  const ht=presta+urgA+premA-remA+frais, tva=ht*R.tva/100, ttc=ht+tva;
-  const hon=ht-frais;
-  const tjmMoyen=jours>0?hon/jours:0;
+  const c=calcDevis(f,R);
+  const tjmMoyen=c.jours>0?c.hon/c.jours:0;
+  const prospectName=id=>{const p=prospects.find(x=>String(x.id)===String(id));return p?(p.nom||"(sans nom)"):"";};
 
   const alerts=[];
-  if(sj>0&&pj<2) alerts.push("Moins de 2 jours de préparation pour une mission sur site : prévoir au moins la formule Essentielle.");
-  if(jours>0&&tjmMoyen<650) alerts.push("Revenu moyen sous 650 €/jour : en dessous du plancher conseillé.");
-  if(num(remPct)>15) alerts.push("Remise supérieure à 15 % : à compenser par un engagement (volume, récurrence).");
+  if(c.sj>0&&c.pj<2) alerts.push("Moins de 2 jours de préparation pour une mission sur site : prévoir au moins la formule Essentielle.");
+  if(c.jours>0&&tjmMoyen<650) alerts.push("Revenu moyen sous 650 €/jour : en dessous du plancher conseillé.");
+  if(num(f.remPct)>15) alerts.push("Remise supérieure à 15 % : à compenser par un engagement (volume, récurrence).");
 
   function buildText(){
-    let t=`DEVIS – ${event||"[Événement]"}\nClient : ${client||"[Client]"}`;
-    if(lieu) t+=`\nLieu : ${lieu}`;
-    if(dates) t+=`\nDates d'exploitation : ${dates}`;
+    let t=`DEVIS${editNumero?` ${editNumero}`:""} – ${f.event||"[Événement]"}\nClient : ${f.client||"[Client]"}`;
+    if(f.lieu) t+=`\nLieu : ${f.lieu}`;
+    if(f.dates) t+=`\nDates d'exploitation : ${f.dates}`;
     t+=`\n\nPrestation d'accompagnement pour la préparation et l'exploitation d'un restaurant éphémère : aspects organisationnels, opérationnels et managériaux.\n\n`;
-    lines.forEach((l,i)=>{t+=`${i+1}. ${l.t}\n   ${fjr(l.q)} ${l.u}${l.q>1&&l.u!=="forfait"?"s":""} × ${eur(l.pu)} = ${eur(l.tot)} HT\n`;});
-    if(urgA) t+=`\nMajoration urgence (+${num(urgPct)} %) : ${eur(urgA)} HT`;
-    if(premA) t+=`\nCoefficient événement premium (+${num(premPct)} %) : ${eur(premA)} HT`;
-    if(remA) t+=`\nRemise commerciale (${num(remPct)} %) : – ${eur(remA)} HT`;
-    const fr=[["Déplacements",fDep],["Hébergement",fHeb],["Repas",fRep]].filter(f=>num(f[1]));
-    if(fr.length){t+=`\n\nFrais refacturés :`;fr.forEach(f=>t+=`\n- ${f[0]} : ${eur(num(f[1]))} HT`);}
-    t+=`\n\nTotal HT : ${eur(ht)}\nTVA ${R.tva} % : ${eur(tva)}\nTotal TTC : ${eur(ttc)}`;
-    t+=`\n\nConditions :\n- Acompte de ${acompte} % à la signature (${eur(ttc*acompte/100)} TTC), solde à réception de facture.\n- Journée sur site jusqu'à 12 h ; au-delà, ${eur(R.hs)} HT / heure.\n- Tout jour supplémentaire demandé est facturé au tarif unitaire indiqué.\n- Devis valable 30 jours.`;
+    c.lines.forEach((l,i)=>{t+=`${i+1}. ${l.t}\n   ${fjr(l.q)} ${l.u}${l.q>1&&l.u!=="forfait"?"s":""} × ${eur(l.pu)} = ${eur(l.tot)} HT\n`;});
+    if(c.urgA) t+=`\nMajoration urgence (+${num(f.urgPct)} %) : ${eur(c.urgA)} HT`;
+    if(c.premA) t+=`\nCoefficient événement premium (+${num(f.premPct)} %) : ${eur(c.premA)} HT`;
+    if(c.remA) t+=`\nRemise commerciale (${num(f.remPct)} %) : – ${eur(c.remA)} HT`;
+    const fr=[["Déplacements",f.fDep],["Hébergement",f.fHeb],["Repas",f.fRep]].filter(x=>num(x[1]));
+    if(fr.length){t+=`\n\nFrais refacturés :`;fr.forEach(x=>t+=`\n- ${x[0]} : ${eur(num(x[1]))} HT`);}
+    t+=`\n\nTotal HT : ${eur(c.ht)}\nTVA ${R.tva} % : ${eur(c.tva)}\nTotal TTC : ${eur(c.ttc)}`;
+    t+=`\n\nConditions :\n- Acompte de ${f.acompte} % à la signature (${eur(c.ttc*f.acompte/100)} TTC), solde à réception de facture.\n- Journée sur site jusqu'à 12 h ; au-delà, ${eur(R.hs)} HT / heure.\n- Tout jour supplémentaire demandé est facturé au tarif unitaire indiqué.\n- Devis valable 30 jours.`;
     return t;
   }
-  function flash(m){setMsg(m);setTimeout(()=>setMsg(""),2200);}
+  function flash(m){setMsg(m);setTimeout(()=>setMsg(""),2600);}
   async function copyText(){
     const t=buildText();
     try{await navigator.clipboard.writeText(t);flash("Texte copié ✓");}
     catch{const ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");flash("Texte copié ✓");}catch{flash("Copie impossible");}document.body.removeChild(ta);}
   }
-  async function attach(){
-    if(!prospectId){flash("Choisis d'abord un prospect");return;}
-    const resume=`📋 Devis événementiel du ${new Date().toLocaleDateString("fr-FR")} – ${event||"Événement"}${dates?` (${dates})`:""}\n`+
-      lines.map(l=>`• ${l.t} : ${fjr(l.q)} ${l.u}${l.q>1&&l.u!=="forfait"?"s":""} × ${eur(l.pu)}`).join("\n")+
-      (urgA?`\n• Urgence +${num(urgPct)} %`:"")+(premA?`\n• Premium +${num(premPct)} %`:"")+(remA?`\n• Remise ${num(remPct)} %`:"")+(frais?`\n• Frais : ${eur(frais)}`:"")+
-      `\nTotal : ${eur(ht)} HT · ${eur(ttc)} TTC · acompte ${acompte} %`;
-    const ok=await onAttach(prospectId,resume);
-    flash(ok?"Devis ajouté aux notes du prospect ✓":"Erreur lors de l'enregistrement");
+  function nextNumero(){
+    const y=new Date().getFullYear();
+    const nums=devisList.map(d=>(d.numero||"").match(new RegExp(`^DEV-${y}-(\\d+)$`))).filter(Boolean).map(m=>parseInt(m[1]));
+    return `DEV-${y}-${String((nums.length?Math.max(...nums):0)+1).padStart(3,"0")}`;
   }
-  function pickProspect(id){
-    setProspectId(id);
-    const p=prospects.find(x=>String(x.id)===String(id));
-    if(p){setClient(p.nom||"");if(!lieu&&p.ville)setLieu(p.ville);}
+  async function saveDevis(){
+    if(!f.client.trim()&&!f.prospectId){flash("Indique au moins un client ou un prospect");return;}
+    setSaving(true);
+    const row={
+      numero:editNumero||nextNumero(),
+      prospect_id:f.prospectId?String(f.prospectId):null,
+      client:f.client||prospectName(f.prospectId),
+      evenement:f.event, statut,
+      ref_pennylane:f.refPennylane||null,
+      total_ht:Math.round(c.ht*100)/100, total_ttc:Math.round(c.ttc*100)/100,
+      data:{form:f,rates:R},
+      user_id:currentUser?.id||null,
+    };
+    if(editId){
+      const r=await fetch(`${SUPA_URL}/rest/v1/devis?id=eq.${editId}`,{method:"PATCH",headers:{apikey:SUPA_KEY,Authorization:`Bearer ${SUPA_KEY}`,"Content-Type":"application/json"},body:JSON.stringify(row)});
+      if(r.ok){setDevisList(l=>l.map(d=>d.id===editId?{...d,...row}:d));flash(`Devis ${row.numero} mis à jour ✓`);}
+      else flash("Erreur d'enregistrement : la table « devis » existe-t-elle dans Supabase ?");
+    } else {
+      const created=await supa.insert("devis",row);
+      if(created){setDevisList(l=>[...l,created]);setEditId(created.id);setEditNumero(created.numero);flash(`Devis ${created.numero} enregistré ✓`);}
+      else flash("Erreur d'enregistrement : la table « devis » existe-t-elle dans Supabase ?");
+    }
+    setSaving(false);
+  }
+  function openDevis(d,duplicate=false){
+    const data=d.data||{};
+    setF({...devisEmptyForm(),...(data.form||{})});
+    if(data.rates) setRates({...DEVIS_RATES_DEFAULT,...data.rates});
+    if(duplicate){setEditId(null);setEditNumero("");setStatut("Brouillon");set("refPennylane","");}
+    else{setEditId(d.id);setEditNumero(d.numero||"");setStatut(d.statut||"Brouillon");}
+    setTab("form");
+    if(duplicate) setTimeout(()=>flash("Copie prête : enregistre-la pour créer un nouveau devis"),50);
+  }
+  async function changeStatut(d,s){
+    await supa.update("devis",d.id,{statut:s});
+    setDevisList(l=>l.map(x=>x.id===d.id?{...x,statut:s}:x));
+    if(d.id===editId) setStatut(s);
+  }
+  async function deleteDevis(d){
+    if(!window.confirm(`Supprimer le devis ${d.numero} ?`)) return;
+    await supa.delete("devis",d.id);
+    setDevisList(l=>l.filter(x=>x.id!==d.id));
+    if(d.id===editId) resetDevis();
   }
   function resetDevis(){
-    setProspectId("");setClient("");setEvent("");setLieu("");setDates("");setFormule("std");setPrepJours(4);setSiteJours(6);setInstallJours(0);setHsH(0);setMgrNb(0);setMgrJours(0);
-    setOpts(Object.fromEntries(DEVIS_OPTIONS.map(o=>[o.id,{on:!!o.def,q:o.defQ||1}])));setUrg(false);setPrem(false);setRemPct(0);setFDep(0);setFHeb(0);setFRep(0);setAcompte(40);
+    setF(devisEmptyForm());setEditId(null);setEditNumero("");setStatut("Brouillon");setRates(loadDevisRates());
+  }
+  function pickProspect(id){
+    const p=prospects.find(x=>String(x.id)===String(id));
+    setF(x=>({...x,prospectId:id,client:p?(p.nom||x.client):x.client,lieu:(!x.lieu&&p&&p.ville)?p.ville:x.lieu}));
   }
   function saveRates(){
     const r={};Object.keys(DEVIS_RATES_DEFAULT).forEach(k=>r[k]=num(draftRates[k]));
@@ -1832,108 +1897,174 @@ function ModuleDevis({prospects,onAttach}) {
   const nS={...iS,width:84,textAlign:"right",fontWeight:600};
   const bP={background:NAVY,color:CREAM,border:`1px solid ${GOLD}`,borderRadius:6,padding:"10px 18px",fontSize:11,fontWeight:700,cursor:"pointer",letterSpacing:1,textTransform:"uppercase",fontFamily:"sans-serif"};
   const bS={background:CREAM,color:NAVY,border:"1px solid rgba(27,42,74,0.2)",borderRadius:6,padding:"10px 18px",fontSize:11,cursor:"pointer",fontFamily:"sans-serif"};
+  const tabS=a=>({padding:"11px 22px",border:"none",background:"none",cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"sans-serif",letterSpacing:1,textTransform:"uppercase",color:a?NAVY:"#bbb",borderBottom:a?`2px solid ${GOLD}`:"2px solid transparent",marginBottom:-2});
+
+  const sortedList=[...devisList].sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0)).filter(d=>listFilter==="Tous"||(d.statut||"Brouillon")===listFilter);
+  const totAccepte=devisList.filter(d=>["Accepté","Facturé"].includes(d.statut)).reduce((s,d)=>s+(+d.total_ht||0),0);
+  const totEnvoye=devisList.filter(d=>d.statut==="Envoyé").reduce((s,d)=>s+(+d.total_ht||0),0);
 
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18,flexWrap:"wrap",gap:12}}>
         <div>
           <div style={{fontSize:10,letterSpacing:4,color:GOLD,textTransform:"uppercase",marginBottom:8,fontWeight:600,fontFamily:"sans-serif"}}>Événementiel & restaurants éphémères</div>
-          <h1 style={{fontSize:26,fontWeight:700,margin:0,fontFamily:"'Cormorant Garamond',serif"}}>Calculateur de devis</h1>
+          <h1 style={{fontSize:26,fontWeight:700,margin:0,fontFamily:"'Cormorant Garamond',serif"}}>Devis</h1>
           <div style={{width:36,height:2,background:GOLD,marginTop:9}}/>
         </div>
         <div style={{display:"flex",gap:8}}>
           <button onClick={()=>{setDraftRates(rates);setShowRates(true);}} style={bS}>⚙ Tarifs de base</button>
-          <button onClick={resetDevis} style={bS}>↺ Nouveau devis</button>
+          <button onClick={()=>{resetDevis();setTab("form");}} style={bS}>+ Nouveau devis</button>
         </div>
       </div>
 
+      <div style={{display:"flex",gap:0,marginBottom:22,borderBottom:`2px solid ${CREAM}`}}>
+        <button onClick={()=>setTab("form")} style={tabS(tab==="form")}>{editId?`✏ ${editNumero}`:"Nouveau devis"}</button>
+        <button onClick={()=>setTab("list")} style={tabS(tab==="list")}>Mes devis ({devisList.length})</button>
+      </div>
+
+      {tab==="list"&&(
+        <div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12,marginBottom:18}}>
+            {[["Devis enregistrés",devisList.length,NAVY],["En attente (envoyés)",eur(totEnvoye)+" HT",ORANGE],["Acceptés / facturés",eur(totAccepte)+" HT",GREEN]].map(k=>(
+              <div key={k[0]} style={{background:WHITE,borderRadius:8,padding:"14px 18px",boxShadow:"0 2px 12px rgba(27,42,74,0.07)",borderLeft:`4px solid ${k[2]}`}}>
+                <div style={{fontSize:9,color:"#aaa",letterSpacing:2,textTransform:"uppercase",fontWeight:600,marginBottom:5,fontFamily:"sans-serif"}}>{k[0]}</div>
+                <div style={{fontSize:20,fontWeight:700,color:k[2],fontFamily:"'Cormorant Garamond',serif"}}>{k[1]}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+            {["Tous",...Object.keys(DEVIS_STATUTS)].map(s=>(
+              <button key={s} onClick={()=>setListFilter(s)} style={{padding:"6px 12px",borderRadius:20,border:`1px solid ${listFilter===s?GOLD:"rgba(27,42,74,0.15)"}`,background:listFilter===s?"#fffbe8":WHITE,color:NAVY,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"sans-serif"}}>{s}</button>
+            ))}
+          </div>
+          <div style={{background:WHITE,borderRadius:8,overflow:"auto",boxShadow:"0 2px 12px rgba(27,42,74,0.07)"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",minWidth:860}}>
+              <thead>
+                <tr style={{background:NAVY}}>
+                  {["N°","Date","Client","Événement","Réf. Pennylane","Statut","Total HT","Total TTC",""].map(h=>(
+                    <th key={h} style={{padding:"11px 14px",textAlign:"left",fontSize:9,fontWeight:700,color:GOLD,textTransform:"uppercase",letterSpacing:1.5,fontFamily:"sans-serif",whiteSpace:"nowrap"}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedList.length===0&&<tr><td colSpan={9} style={{padding:"22px 14px",color:"#bbb",fontSize:13,fontFamily:"sans-serif"}}>Aucun devis{listFilter!=="Tous"?` « ${listFilter} »`:""} pour l'instant.</td></tr>}
+                {sortedList.map(d=>(
+                  <tr key={d.id} style={{borderBottom:`1px solid ${CREAM}`,background:d.id===editId?"#fffbe8":WHITE}}>
+                    <td style={{padding:"11px 14px",fontSize:12,fontWeight:700,color:NAVY,fontFamily:"sans-serif",whiteSpace:"nowrap",cursor:"pointer"}} onClick={()=>openDevis(d)}>{d.numero}</td>
+                    <td style={{padding:"11px 14px",fontSize:12,color:"#888",fontFamily:"sans-serif",whiteSpace:"nowrap"}}>{fmtDate(d.created_at)}</td>
+                    <td style={{padding:"11px 14px",fontSize:13,fontWeight:700,cursor:"pointer"}} onClick={()=>openDevis(d)}>{d.client||prospectName(d.prospect_id)||"—"}</td>
+                    <td style={{padding:"11px 14px",fontSize:12,color:"#666",fontFamily:"sans-serif"}}>{d.evenement||"—"}</td>
+                    <td style={{padding:"11px 14px",fontSize:11,color:"#888",fontFamily:"sans-serif"}}>{d.ref_pennylane||"—"}</td>
+                    <td style={{padding:"11px 14px"}}>
+                      <select value={d.statut||"Brouillon"} onChange={e=>changeStatut(d,e.target.value)} style={{background:(DEVIS_STATUTS[d.statut]||DEVIS_STATUTS.Brouillon).bg,color:(DEVIS_STATUTS[d.statut]||DEVIS_STATUTS.Brouillon).color,border:"none",borderRadius:3,padding:"4px 6px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"sans-serif"}}>
+                        {Object.keys(DEVIS_STATUTS).map(s=><option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </td>
+                    <td style={{padding:"11px 14px",fontSize:14,fontWeight:700,color:NAVY,fontFamily:"'Cormorant Garamond',serif",whiteSpace:"nowrap"}}>{eur(+d.total_ht)}</td>
+                    <td style={{padding:"11px 14px",fontSize:12,color:"#888",fontFamily:"sans-serif",whiteSpace:"nowrap"}}>{eur(+d.total_ttc)}</td>
+                    <td style={{padding:"11px 14px",whiteSpace:"nowrap"}}>
+                      <button onClick={()=>openDevis(d)} title="Ouvrir" style={{background:"none",border:`1px solid ${GOLD}`,color:GOLD,borderRadius:4,padding:"3px 8px",fontSize:11,cursor:"pointer",marginRight:4,fontWeight:700}}>Ouvrir</button>
+                      <button onClick={()=>openDevis(d,true)} title="Dupliquer" style={{background:"none",border:"1px solid #ddd",color:NAVY,borderRadius:4,padding:"3px 8px",fontSize:11,cursor:"pointer",marginRight:4}}>⧉</button>
+                      <button onClick={()=>deleteDevis(d)} title="Supprimer" style={{background:"none",border:"1px solid #f5c6c6",color:RED,borderRadius:4,padding:"3px 8px",fontSize:11,cursor:"pointer"}}>✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {msg&&<div style={{marginTop:10,fontSize:12,color:GREEN,fontFamily:"sans-serif"}}>{msg}</div>}
+        </div>
+      )}
+
+      {tab==="form"&&(
       <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 340px",gap:20,alignItems:"start"}} className="devis-grid">
         <style>{`@media(max-width:1000px){.devis-grid{grid-template-columns:1fr!important}.devis-recap{position:static!important}}`}</style>
         <div>
-          <DevisCard n="1" title="Client & événement" hint="Lier le devis à un prospect du pipeline permet de l'enregistrer dans sa fiche.">
+          <DevisCard n="1" title="Client & événement" hint="Lier le devis à un prospect du pipeline pour le retrouver dans sa fiche.">
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12}}>
               <div><label style={lS}>Prospect du pipeline</label>
-                <select value={prospectId} onChange={e=>pickProspect(e.target.value)} style={{...iS,cursor:"pointer"}}>
+                <select value={f.prospectId} onChange={e=>pickProspect(e.target.value)} style={{...iS,cursor:"pointer"}}>
                   <option value="">— Aucun —</option>
-                  {[...prospects].sort((a,b)=>(a.nom||"").localeCompare(b.nom||"")).map(p=><option key={p.id} value={p.id}>{p.nom}</option>)}
+                  {[...prospects].sort((a,b)=>(a.nom||"").localeCompare(b.nom||"")).map(p=><option key={p.id} value={p.id}>{p.nom||"(sans nom)"}</option>)}
                 </select>
               </div>
-              <div><label style={lS}>Client</label><input value={client} onChange={e=>setClient(e.target.value)} placeholder="ex. KRS" style={iS}/></div>
-              <div><label style={lS}>Événement</label><input value={event} onChange={e=>setEvent(e.target.value)} placeholder="ex. Art Basel 2027" style={iS}/></div>
-              <div><label style={lS}>Lieu</label><input value={lieu} onChange={e=>setLieu(e.target.value)} placeholder="ex. Grand Palais" style={iS}/></div>
-              <div><label style={lS}>Dates d'exploitation</label><input value={dates} onChange={e=>setDates(e.target.value)} placeholder="ex. 20 → 25 oct." style={iS}/></div>
+              <div><label style={lS}>Client</label><input value={f.client} onChange={e=>set("client",e.target.value)} placeholder="ex. KRS" style={iS}/></div>
+              <div><label style={lS}>Événement</label><input value={f.event} onChange={e=>set("event",e.target.value)} placeholder="ex. Art Basel 2027" style={iS}/></div>
+              <div><label style={lS}>Lieu</label><input value={f.lieu} onChange={e=>set("lieu",e.target.value)} placeholder="ex. Grand Palais" style={iS}/></div>
+              <div><label style={lS}>Dates d'exploitation</label><input value={f.dates} onChange={e=>set("dates",e.target.value)} placeholder="ex. 20 → 25 oct." style={iS}/></div>
+              <div><label style={lS}>Réf. devis Pennylane</label><input value={f.refPennylane} onChange={e=>set("refPennylane",e.target.value)} placeholder="ex. D-30-09-2026-1" style={iS}/></div>
             </div>
           </DevisCard>
 
           <DevisCard n="2" title="Conseil & préparation en amont" hint="Minimum conseillé : 2 jours de préparation pour toute mission sur site.">
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:9}}>
-              {DEVIS_FORMULES.map(f=>{
-                const sel=formule===f.id;
+              {DEVIS_FORMULES.map(fo=>{
+                const sel=f.formule===fo.id;
                 return (
-                  <div key={f.id} onClick={()=>setFormule(f.id)} style={{border:`1.5px solid ${sel?GOLD:"rgba(27,42,74,0.1)"}`,background:sel?"#fffbe8":CREAM,borderRadius:8,padding:"11px 12px",cursor:"pointer"}}>
-                    <div style={{fontSize:12,fontWeight:700,color:NAVY,fontFamily:"sans-serif"}}>{f.t}{f.reco&&<span style={{marginLeft:6,fontSize:9,background:GOLD,color:WHITE,borderRadius:10,padding:"1px 6px"}}>conseillée</span>}</div>
-                    <div style={{fontSize:18,fontWeight:700,color:NAVY,fontFamily:"'Cormorant Garamond',serif",margin:"3px 0"}}>{f.j===null?"à la carte":eur(f.j*R.tjmConseil)}</div>
-                    <div style={{fontSize:10,color:"#999",fontFamily:"sans-serif",lineHeight:1.35}}>{f.j?`${f.j} jours · `:""}{f.d}</div>
+                  <div key={fo.id} onClick={()=>set("formule",fo.id)} style={{border:`1.5px solid ${sel?GOLD:"rgba(27,42,74,0.1)"}`,background:sel?"#fffbe8":CREAM,borderRadius:8,padding:"11px 12px",cursor:"pointer"}}>
+                    <div style={{fontSize:12,fontWeight:700,color:NAVY,fontFamily:"sans-serif"}}>{fo.t}{fo.reco&&<span style={{marginLeft:6,fontSize:9,background:GOLD,color:WHITE,borderRadius:10,padding:"1px 6px"}}>conseillée</span>}</div>
+                    <div style={{fontSize:18,fontWeight:700,color:NAVY,fontFamily:"'Cormorant Garamond',serif",margin:"3px 0"}}>{fo.j===null?"à la carte":eur(fo.j*R.tjmConseil)}</div>
+                    <div style={{fontSize:10,color:"#999",fontFamily:"sans-serif",lineHeight:1.35}}>{fo.j?`${fo.j} jours · `:""}{fo.d}</div>
                   </div>
                 );
               })}
             </div>
-            {formule==="sm"&&(
+            {f.formule==="sm"&&(
               <div style={{marginTop:10}}>
-                <DevisRow label="Nombre de jours de préparation" sub={`${eur(R.tjmConseil)} / jour`} amount={eur(prep)}>
-                  <input type="number" min="0" step="0.5" value={prepJours} onChange={e=>setPrepJours(e.target.value)} style={nS}/>
+                <DevisRow label="Nombre de jours de préparation" sub={`${eur(R.tjmConseil)} / jour`} amount={eur(c.sumGrp("prep"))}>
+                  <input type="number" min="0" step="0.5" value={f.prepJours} onChange={e=>set("prepJours",e.target.value)} style={nS}/>
                 </DevisRow>
               </div>
             )}
           </DevisCard>
 
           <DevisCard n="3" title="Direction opérationnelle sur site" hint="Encadrement des équipes et conseil au dirigeant pendant l'exploitation, jusqu'à 12 h par jour.">
-            <DevisRow label="Jours de service sur site" sub={`${eur(R.tjmSite)} / jour · encadrement + conseil inclus`} amount={eur(sj*R.tjmSite)}>
-              <input type="number" min="0" step="0.5" value={siteJours} onChange={e=>setSiteJours(e.target.value)} style={nS}/>
+            <DevisRow label="Jours de service sur site" sub={`${eur(R.tjmSite)} / jour · encadrement + conseil inclus`} amount={eur(num(f.siteJours)*R.tjmSite)}>
+              <input type="number" min="0" step="0.5" value={f.siteJours} onChange={e=>set("siteJours",e.target.value)} style={nS}/>
             </DevisRow>
-            <DevisRow label="Jours d'installation / mise en place" sub="Veille d'ouverture, briefing, test à blanc" amount={eur(ij*R.install)}>
-              <input type="number" min="0" step="0.5" value={installJours} onChange={e=>setInstallJours(e.target.value)} style={nS}/>
+            <DevisRow label="Jours d'installation / mise en place" sub="Veille d'ouverture, briefing, test à blanc" amount={eur(num(f.installJours)*R.install)}>
+              <input type="number" min="0" step="0.5" value={f.installJours} onChange={e=>set("installJours",e.target.value)} style={nS}/>
             </DevisRow>
-            <DevisRow label="Heures au-delà de 12 h / nuit" sub={`${eur(R.hs)} / heure`} amount={eur(hs*R.hs)}>
-              <input type="number" min="0" step="1" value={hsH} onChange={e=>setHsH(e.target.value)} style={nS}/>
+            <DevisRow label="Heures au-delà de 12 h / nuit" sub={`${eur(R.hs)} / heure`} amount={eur(num(f.hsH)*R.hs)}>
+              <input type="number" min="0" step="1" value={f.hsH} onChange={e=>set("hsH",e.target.value)} style={nS}/>
             </DevisRow>
-            <DevisRow label="Managers LND supplémentaires" sub={`Nombre × jours chacun · ${eur(R.mgr)} / jour`} amount={eur(mn*mj*R.mgr)}>
-              <input type="number" min="0" step="1" value={mgrNb} onChange={e=>setMgrNb(e.target.value)} style={{...nS,width:64}} title="Nombre"/>
+            <DevisRow label="Managers LND supplémentaires" sub={`Nombre × jours chacun · ${eur(R.mgr)} / jour`} amount={eur(num(f.mgrNb)*num(f.mgrJours)*R.mgr)}>
+              <input type="number" min="0" step="1" value={f.mgrNb} onChange={e=>set("mgrNb",e.target.value)} style={{...nS,width:64}} title="Nombre"/>
               <span style={{color:"#bbb"}}>×</span>
-              <input type="number" min="0" step="0.5" value={mgrJours} onChange={e=>setMgrJours(e.target.value)} style={{...nS,width:64}} title="Jours"/>
+              <input type="number" min="0" step="0.5" value={f.mgrJours} onChange={e=>set("mgrJours",e.target.value)} style={{...nS,width:64}} title="Jours"/>
             </DevisRow>
           </DevisCard>
 
           <DevisCard n="4" title="Bilan & options" hint="Les ajouts à proposer en rendez-vous.">
             {DEVIS_OPTIONS.map(o=>{
-              const st=opts[o.id];
+              const st=f.opts[o.id]||{on:false,q:1};
               const q=o.qty?Math.max(1,num(st.q)):1;
               return (
                 <DevisRow key={o.id} label={o.t} sub={`${o.s} · ${eur(R[o.id])}${o.qty?` / ${o.unit}`:""}`} amount={st.on?eur(q*R[o.id]):"—"}>
-                  {o.qty&&<input type="number" min="1" step="1" value={st.q} onChange={e=>setOpts({...opts,[o.id]:{...st,q:e.target.value}})} style={{...nS,width:64}}/>}
-                  <DevisSwitch checked={st.on} onChange={v=>setOpts({...opts,[o.id]:{...st,on:v}})}/>
+                  {o.qty&&<input type="number" min="1" step="1" value={st.q} onChange={e=>setOpt(o.id,"q",e.target.value)} style={{...nS,width:64}}/>}
+                  <DevisSwitch checked={st.on} onChange={v=>setOpt(o.id,"on",v)}/>
                 </DevisRow>
               );
             })}
           </DevisCard>
 
           <DevisCard n="5" title="Frais & conditions" hint="Les frais sont refacturés sans majoration ni remise.">
-            <DevisRow label="Majoration urgence" sub="Demande à moins de 15 jours de l'ouverture" amount={urgA?eur(urgA):"—"}>
-              <DevisSwitch checked={urg} onChange={setUrg}/>
-              <input type="number" min="0" step="5" value={urgPct} onChange={e=>setUrgPct(e.target.value)} style={{...nS,width:64}}/><span style={{fontFamily:"sans-serif",fontSize:12}}>%</span>
+            <DevisRow label="Majoration urgence" sub="Demande à moins de 15 jours de l'ouverture" amount={c.urgA?eur(c.urgA):"—"}>
+              <DevisSwitch checked={f.urg} onChange={v=>set("urg",v)}/>
+              <input type="number" min="0" step="5" value={f.urgPct} onChange={e=>set("urgPct",e.target.value)} style={{...nS,width:64}}/><span style={{fontFamily:"sans-serif",fontSize:12}}>%</span>
             </DevisRow>
-            <DevisRow label="Coefficient événement premium" sub="Salon international, lieu prestigieux, clientèle VIP" amount={premA?eur(premA):"—"}>
-              <DevisSwitch checked={prem} onChange={setPrem}/>
-              <input type="number" min="0" step="5" value={premPct} onChange={e=>setPremPct(e.target.value)} style={{...nS,width:64}}/><span style={{fontFamily:"sans-serif",fontSize:12}}>%</span>
+            <DevisRow label="Coefficient événement premium" sub="Salon international, lieu prestigieux, clientèle VIP" amount={c.premA?eur(c.premA):"—"}>
+              <DevisSwitch checked={f.prem} onChange={v=>set("prem",v)}/>
+              <input type="number" min="0" step="5" value={f.premPct} onChange={e=>set("premPct",e.target.value)} style={{...nS,width:64}}/><span style={{fontFamily:"sans-serif",fontSize:12}}>%</span>
             </DevisRow>
-            <DevisRow label="Remise commerciale" sub="Client fidèle, mission longue…" amount={remA?`– ${eur(remA)}`:"—"}>
-              <input type="number" min="0" max="50" step="1" value={remPct} onChange={e=>setRemPct(e.target.value)} style={{...nS,width:64}}/><span style={{fontFamily:"sans-serif",fontSize:12}}>%</span>
+            <DevisRow label="Remise commerciale" sub="Client fidèle, mission longue…" amount={c.remA?`– ${eur(c.remA)}`:"—"}>
+              <input type="number" min="0" max="50" step="1" value={f.remPct} onChange={e=>set("remPct",e.target.value)} style={{...nS,width:64}}/><span style={{fontFamily:"sans-serif",fontSize:12}}>%</span>
             </DevisRow>
-            <DevisRow label="Déplacements" sub="Forfait ou réel" amount="€ HT"><input type="number" min="0" step="10" value={fDep} onChange={e=>setFDep(e.target.value)} style={nS}/></DevisRow>
-            <DevisRow label="Hébergement" sub="Hors Île-de-France" amount="€ HT"><input type="number" min="0" step="10" value={fHeb} onChange={e=>setFHeb(e.target.value)} style={nS}/></DevisRow>
-            <DevisRow label="Repas pendant les services" sub="Si non fournis par le client" amount="€ HT"><input type="number" min="0" step="10" value={fRep} onChange={e=>setFRep(e.target.value)} style={nS}/></DevisRow>
+            <DevisRow label="Déplacements" sub="Forfait ou réel" amount="€ HT"><input type="number" min="0" step="10" value={f.fDep} onChange={e=>set("fDep",e.target.value)} style={nS}/></DevisRow>
+            <DevisRow label="Hébergement" sub="Hors Île-de-France" amount="€ HT"><input type="number" min="0" step="10" value={f.fHeb} onChange={e=>set("fHeb",e.target.value)} style={nS}/></DevisRow>
+            <DevisRow label="Repas pendant les services" sub="Si non fournis par le client" amount="€ HT"><input type="number" min="0" step="10" value={f.fRep} onChange={e=>set("fRep",e.target.value)} style={nS}/></DevisRow>
             <DevisRow label="Acompte à la signature" sub="Couvre la phase de préparation" amount="">
-              <select value={acompte} onChange={e=>setAcompte(parseInt(e.target.value))} style={{...iS,width:90,cursor:"pointer"}}>{[30,40,50].map(v=><option key={v} value={v}>{v} %</option>)}</select>
+              <select value={f.acompte} onChange={e=>set("acompte",parseInt(e.target.value))} style={{...iS,width:90,cursor:"pointer"}}>{[30,40,50].map(v=><option key={v} value={v}>{v} %</option>)}</select>
             </DevisRow>
           </DevisCard>
         </div>
@@ -1941,22 +2072,27 @@ function ModuleDevis({prospects,onAttach}) {
         {/* Récapitulatif */}
         <div className="devis-recap" style={{position:"sticky",top:20}}>
           <div style={{background:NAVY,borderRadius:10,padding:"20px 22px",borderTop:`3px solid ${GOLD}`}}>
-            <div style={{fontSize:9,color:GOLD,letterSpacing:2.5,textTransform:"uppercase",fontWeight:700,marginBottom:12,fontFamily:"sans-serif"}}>Récapitulatif</div>
-            {[["Préparation",sumGrp("prep")],["Sur site",sumGrp("site")],["Options",sumGrp("opt")]].filter(g=>g[1]).map(g=>(
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <div style={{fontSize:9,color:GOLD,letterSpacing:2.5,textTransform:"uppercase",fontWeight:700,fontFamily:"sans-serif"}}>{editNumero||"Récapitulatif"}</div>
+              <select value={statut} onChange={e=>setStatut(e.target.value)} style={{background:(DEVIS_STATUTS[statut]||DEVIS_STATUTS.Brouillon).bg,color:(DEVIS_STATUTS[statut]||DEVIS_STATUTS.Brouillon).color,border:"none",borderRadius:3,padding:"3px 6px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"sans-serif"}}>
+                {Object.keys(DEVIS_STATUTS).map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            {[["Préparation",c.sumGrp("prep")],["Sur site",c.sumGrp("site")],["Options",c.sumGrp("opt")]].filter(g=>g[1]).map(g=>(
               <div key={g[0]} style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"rgba(245,240,234,0.75)",padding:"4px 0",fontFamily:"sans-serif"}}><span>{g[0]}</span><span>{eur(g[1])}</span></div>
             ))}
-            {urgA>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"rgba(245,240,234,0.75)",padding:"4px 0",fontFamily:"sans-serif"}}><span>Urgence +{num(urgPct)} %</span><span>{eur(urgA)}</span></div>}
-            {premA>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"rgba(245,240,234,0.75)",padding:"4px 0",fontFamily:"sans-serif"}}><span>Premium +{num(premPct)} %</span><span>{eur(premA)}</span></div>}
-            {remA>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"#f1b9a0",padding:"4px 0",fontFamily:"sans-serif"}}><span>Remise {num(remPct)} %</span><span>– {eur(remA)}</span></div>}
-            {frais>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"rgba(245,240,234,0.75)",padding:"4px 0",fontFamily:"sans-serif"}}><span>Frais</span><span>{eur(frais)}</span></div>}
-            <div style={{borderTop:"1px solid rgba(184,150,62,0.25)",marginTop:8,paddingTop:10,display:"flex",justifyContent:"space-between",fontSize:13,color:CREAM,fontFamily:"sans-serif"}}><span>Total HT</span><span>{eur(ht)}</span></div>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"rgba(245,240,234,0.6)",padding:"4px 0",fontFamily:"sans-serif"}}><span>TVA {R.tva} %</span><span>{eur(tva)}</span></div>
+            {c.urgA>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"rgba(245,240,234,0.75)",padding:"4px 0",fontFamily:"sans-serif"}}><span>Urgence +{num(f.urgPct)} %</span><span>{eur(c.urgA)}</span></div>}
+            {c.premA>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"rgba(245,240,234,0.75)",padding:"4px 0",fontFamily:"sans-serif"}}><span>Premium +{num(f.premPct)} %</span><span>{eur(c.premA)}</span></div>}
+            {c.remA>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"#f1b9a0",padding:"4px 0",fontFamily:"sans-serif"}}><span>Remise {num(f.remPct)} %</span><span>– {eur(c.remA)}</span></div>}
+            {c.frais>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"rgba(245,240,234,0.75)",padding:"4px 0",fontFamily:"sans-serif"}}><span>Frais</span><span>{eur(c.frais)}</span></div>}
+            <div style={{borderTop:"1px solid rgba(184,150,62,0.25)",marginTop:8,paddingTop:10,display:"flex",justifyContent:"space-between",fontSize:13,color:CREAM,fontFamily:"sans-serif"}}><span>Total HT</span><span>{eur(c.ht)}</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"rgba(245,240,234,0.6)",padding:"4px 0",fontFamily:"sans-serif"}}><span>TVA {R.tva} %</span><span>{eur(c.tva)}</span></div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginTop:6}}>
               <span style={{fontSize:12,color:GOLD,fontWeight:700,letterSpacing:2,fontFamily:"sans-serif"}}>TTC</span>
-              <span style={{fontSize:28,fontWeight:700,color:CREAM,fontFamily:"'Cormorant Garamond',serif"}}>{eur(ttc)}</span>
+              <span style={{fontSize:28,fontWeight:700,color:CREAM,fontFamily:"'Cormorant Garamond',serif"}}>{eur(c.ttc)}</span>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:14}}>
-              {[["Jours facturés",`${fjr(jours)} j`],["Revenu moyen / jour",jours?eur(Math.round(tjmMoyen)):"—"],["Acompte TTC",eur(ttc*acompte/100)],["Solde TTC",eur(ttc*(1-acompte/100))]].map(k=>(
+              {[["Jours facturés",`${fjr(c.jours)} j`],["Revenu moyen / jour",c.jours?eur(Math.round(tjmMoyen)):"—"],["Acompte TTC",eur(c.ttc*f.acompte/100)],["Solde TTC",eur(c.ttc*(1-f.acompte/100))]].map(k=>(
                 <div key={k[0]} style={{background:"rgba(255,255,255,0.06)",borderRadius:6,padding:"9px 11px"}}>
                   <div style={{fontSize:9,color:"rgba(245,240,234,0.5)",letterSpacing:1,textTransform:"uppercase",fontFamily:"sans-serif",marginBottom:3}}>{k[0]}</div>
                   <div style={{fontSize:15,fontWeight:700,color:CREAM,fontFamily:"'Cormorant Garamond',serif"}}>{k[1]}</div>
@@ -1965,15 +2101,16 @@ function ModuleDevis({prospects,onAttach}) {
             </div>
             {alerts.length>0
               ?alerts.map((a,i)=><div key={i} style={{marginTop:10,background:"#fff0e0",color:"#8A4500",borderRadius:6,padding:"8px 11px",fontSize:12,fontFamily:"sans-serif"}}>⚠ {a}</div>)
-              :ht>0&&<div style={{marginTop:10,background:"#E3F5E8",color:"#145228",borderRadius:6,padding:"8px 11px",fontSize:12,fontFamily:"sans-serif"}}>✓ Devis dans la grille LND</div>}
+              :c.ht>0&&<div style={{marginTop:10,background:"#E3F5E8",color:"#145228",borderRadius:6,padding:"8px 11px",fontSize:12,fontFamily:"sans-serif"}}>✓ Devis dans la grille LND</div>}
             <div style={{display:"flex",flexDirection:"column",gap:7,marginTop:14}}>
-              <button onClick={()=>setShowText(true)} style={{...bP,background:GOLD,color:NAVY,border:`1px solid ${GOLD}`}}>📋 Texte du devis</button>
-              <button onClick={attach} style={{...bP,background:"transparent"}}>💾 Ajouter à la fiche prospect</button>
+              <button onClick={saveDevis} disabled={saving} style={{...bP,background:GOLD,color:NAVY,border:`1px solid ${GOLD}`,opacity:saving?0.6:1}}>{saving?"Enregistrement…":editId?"💾 Mettre à jour le devis":"💾 Enregistrer le devis"}</button>
+              <button onClick={()=>setShowText(true)} style={{...bP,background:"transparent"}}>📋 Texte du devis</button>
             </div>
             {msg&&<div style={{marginTop:10,fontSize:12,color:GOLD_L,fontFamily:"sans-serif",textAlign:"center"}}>{msg}</div>}
           </div>
         </div>
       </div>
+      )}
 
       {/* Modal texte */}
       {showText&&(
@@ -1996,7 +2133,7 @@ function ModuleDevis({prospects,onAttach}) {
         <div onClick={e=>e.target===e.currentTarget&&setShowRates(false)} style={{position:"fixed",inset:0,background:"rgba(17,30,53,0.75)",zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div style={{background:WHITE,borderRadius:10,width:"100%",maxWidth:640,maxHeight:"90vh",overflow:"auto",padding:"24px 28px",borderTop:`4px solid ${GOLD}`}}>
             <h2 style={{fontSize:20,fontWeight:700,margin:"0 0 4px",color:NAVY}}>Tarifs de base (HT)</h2>
-            <div style={{fontSize:12,color:"#999",fontFamily:"sans-serif",marginBottom:16}}>Enregistrés sur cet appareil.</div>
+            <div style={{fontSize:12,color:"#999",fontFamily:"sans-serif",marginBottom:16}}>Enregistrés sur cet appareil. Chaque devis garde les tarifs utilisés au moment de son enregistrement.</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
               {Object.keys(DEVIS_RATES_DEFAULT).map(k=>(
                 <div key={k}><label style={lS}>{DEVIS_RATES_LABELS[k]}</label><input type="number" step="10" value={draftRates[k]} onChange={e=>setDraftRates({...draftRates,[k]:e.target.value})} style={iS}/></div>
@@ -2196,6 +2333,7 @@ export default function LNDUnifie() {
 
   // COMMERCIAL state
   const [prospects,setProspects]=useState([]);
+  const [devisList,setDevisList]=useState([]);
   const [comView,setComView]=useState("pipeline");
   const [comSelected,setComSelected]=useState(null);
   const [showNewProspect,setShowNewProspect]=useState(false);
@@ -2218,11 +2356,13 @@ export default function LNDUnifie() {
     if (!currentUser) return;
     setLoading(true);
     try {
-      const [restos, pros, agenda] = await Promise.all([
+      const [restos, pros, agenda, devis] = await Promise.all([
         supa.get('restaurants'),
         supa.get('prospects'),
         supa.get('agenda'),
+        supa.get('devis'),
       ]);
+      setDevisList(Array.isArray(devis)?devis:[]);
       setRestaurants(restos.map(r => ({
         ...r,
         months: r.months || emptyMonths(),
@@ -2324,14 +2464,9 @@ export default function LNDUnifie() {
     } else {
       const created = await supa.insert('prospects', mapped);
       if(created) setProspects(p=>[{...data, id:created.id}, ...p]);
+      else { alert("Le prospect n'a pas pu être enregistré. Vérifie que la base Supabase n'est pas en pause."); return; }
     }
     setComSelected(null); setShowNewProspect(false);
-  }
-  async function attachDevis(prospectId, resume){
-    const p = prospects.find(x=>String(x.id)===String(prospectId));
-    if(!p) return false;
-    await saveProspect({...p, notes:(p.notes?p.notes+"\n\n":"")+resume});
-    return true;
   }
 
   const iS2={width:"100%",padding:"10px 13px",borderRadius:5,border:"1px solid rgba(27,42,74,0.18)",fontSize:13,outline:"none",color:NAVY,background:WHITE,boxSizing:"border-box"};
@@ -2834,7 +2969,7 @@ export default function LNDUnifie() {
                               <div key={r.id} onClick={()=>setComSelected(r)} style={{background:CREAM,borderRadius:5,padding:"11px",cursor:"pointer",border:"1px solid transparent",transition:"all 0.15s"}}
                                 onMouseEnter={e=>{e.currentTarget.style.border=`1px solid ${GOLD}40`;e.currentTarget.style.transform="translateY(-1px)"}}
                                 onMouseLeave={e=>{e.currentTarget.style.border="1px solid transparent";e.currentTarget.style.transform="none"}}>
-                                <div style={{fontSize:13,fontWeight:700,color:NAVY,marginBottom:2,lineHeight:1.3}}>{r.nom}</div>
+                                <div style={{fontSize:13,fontWeight:700,color:NAVY,marginBottom:2,lineHeight:1.3}}>{r.nom||"(sans nom)"}</div>
                                 {r.contact&&<div style={{fontSize:11,color:"#888",marginBottom:3,fontFamily:"sans-serif"}}>{r.contact}</div>}
                                 {r.ca>0&&<div style={{fontSize:12,fontWeight:700,color:GOLD,marginBottom:3,fontFamily:"'Cormorant Garamond',serif"}}>{fmtEur(r.ca)}</div>}
                                 {(r.forfaits||[]).length>0&&(
@@ -3030,7 +3165,7 @@ export default function LNDUnifie() {
 
             {/* DEVIS ÉVÉNEMENTIEL */}
             {comView==="devis"&&(
-              <ModuleDevis prospects={prospects} onAttach={attachDevis}/>
+              <ModuleDevis prospects={prospects} devisList={devisList} setDevisList={setDevisList} currentUser={currentUser}/>
             )}
 
             {/* IMPORT HUBSPOT */}
@@ -3048,6 +3183,8 @@ export default function LNDUnifie() {
                 resto={comSelected||{id:null,nom:"",contact:"",email:"",tel:"",adresse:"",ville:"",region:"",cp:"",ca:0,salaries:0,stage:"Prospect",notes:"",rappels:[],caHistory:Array(12).fill(0),forfaits:[]}}
                 onClose={()=>{setComSelected(null);setShowNewProspect(false);}}
                 onSave={saveProspect}
+                devisList={devisList}
+                onOpenDevis={()=>{setComSelected(null);setComView("devis");}}
               />
             )}
           </>
