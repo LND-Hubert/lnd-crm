@@ -1782,15 +1782,22 @@ function StatutBadge({statut}) {
   return <span style={{background:s.bg,color:s.color,padding:"3px 9px",borderRadius:3,fontSize:11,fontWeight:700,fontFamily:"sans-serif",whiteSpace:"nowrap"}}>{statut||"Brouillon"}</span>;
 }
 
+function readDevisUI(){try{return JSON.parse(localStorage.getItem('lnd_devis_ui'))||{};}catch{return {};}}
+
 function ModuleDevis({prospects,devisList,setDevisList,currentUser}) {
-  const [tab,setTab]=useState("form");
-  const [rates,setRates]=useState(loadDevisRates);
+  const ui0=useMemo(readDevisUI,[]);
+  const [tab,setTab]=useState(ui0.tab||"form");
+  const [rates,setRates]=useState(()=>ui0.rates?{...DEVIS_RATES_DEFAULT,...ui0.rates}:loadDevisRates());
   const [showRates,setShowRates]=useState(false);
   const [draftRates,setDraftRates]=useState(rates);
-  const [f,setF]=useState(devisEmptyForm);
-  const [editId,setEditId]=useState(null);
-  const [editNumero,setEditNumero]=useState("");
-  const [statut,setStatut]=useState("Brouillon");
+  const [f,setF]=useState(()=>ui0.f?{...devisEmptyForm(),...ui0.f}:devisEmptyForm());
+  const [editId,setEditId]=useState(ui0.editId||null);
+  const [editNumero,setEditNumero]=useState(ui0.editNumero||"");
+  const [statut,setStatut]=useState(ui0.statut||"Brouillon");
+  // Garde le devis en cours et l'onglet affiché au rechargement
+  useEffect(()=>{
+    try{localStorage.setItem('lnd_devis_ui',JSON.stringify({tab,f,editId,editNumero,statut,rates}));}catch{}
+  },[tab,f,editId,editNumero,statut,rates]);
   const [saving,setSaving]=useState(false);
   const [showText,setShowText]=useState(false);
   const [msg,setMsg]=useState("");
@@ -2298,6 +2305,9 @@ function AgendaBlock({agendaEvents,setAgendaEvents,agendaMois,setAgendaMois,show
   );
 }
 
+// ── MÉMOIRE DE NAVIGATION (page conservée au rechargement) ───────────
+function readNav(){try{return JSON.parse(localStorage.getItem('lnd_nav'))||{};}catch{return {};}}
+
 // ── APP PRINCIPALE ────────────────────────────────────────────────────
 
 export default function LNDUnifie() {
@@ -2318,9 +2328,9 @@ export default function LNDUnifie() {
   // OPÉRATIONNEL state
   const [users,setUsers]=useState(USERS_ALL);
   const [restaurants,setRestaurants]=useState([]);
-  const [opView,setOpView]=useState("dashboard");
+  const [opView,setOpView]=useState(()=>readNav().opView||"dashboard");
   const [opSelected,setOpSelected]=useState(null);
-  const [opTab,setOpTab]=useState("exploitation");
+  const [opTab,setOpTab]=useState(()=>readNav().opTab||"exploitation");
   const [showSaisie,setShowSaisie]=useState(false);
   const [showAddDir,setShowAddDir]=useState(false);
   const [showAddResto,setShowAddResto]=useState(false);
@@ -2334,15 +2344,15 @@ export default function LNDUnifie() {
   // COMMERCIAL state
   const [prospects,setProspects]=useState([]);
   const [devisList,setDevisList]=useState([]);
-  const [comView,setComView]=useState("pipeline");
+  const [comView,setComView]=useState(()=>readNav().comView||"pipeline");
   const [comSelected,setComSelected]=useState(null);
   const [showNewProspect,setShowNewProspect]=useState(false);
   const [comSearch,setComSearch]=useState("");
   const [comFilterStage,setComFilterStage]=useState("Tous");
 
   // MODULE
-  const [module,setModule]=useState("op");
-  const [periodeRapport,setPeriodeRapport]=useState("mensuel");
+  const [module,setModule]=useState(()=>readNav().module||"op");
+  const [periodeRapport,setPeriodeRapport]=useState(()=>readNav().periodeRapport||"mensuel");
   const [sidebarOpen,setSidebarOpen]=useState(false);
 
   // AGENDA state
@@ -2363,14 +2373,21 @@ export default function LNDUnifie() {
         supa.get('devis'),
       ]);
       setDevisList(Array.isArray(devis)?devis:[]);
-      setRestaurants(restos.map(r => ({
+      const restosMapped = restos.map(r => ({
         ...r,
         months: r.months || emptyMonths(),
         notes: r.notes || [],
         tasks: r.tasks || [],
         alerts: r.alerts || [],
         directorId: r.director_id,
-      })));
+      }));
+      setRestaurants(restosMapped);
+      // Restaure la fiche restaurant ouverte avant le rechargement
+      const nav = readNav();
+      if (nav.opView === "detail") {
+        const sel = restosMapped.find(r => String(r.id) === String(nav.opSelectedId));
+        if (sel) setOpSelected(sel); else setOpView("list");
+      }
       setProspects(pros.map(p => ({
         ...p,
         rappels: p.rappels || [],
@@ -2404,6 +2421,11 @@ export default function LNDUnifie() {
     alerts:visibleRestosAll.reduce((s,r)=>s+r.alerts.length,0),
     totalCA:visibleRestosAll.filter(r=>r.status==="actif").reduce((s,r)=>s+((r.months.may||EMPTY_MONTH).ca||0),0),
   }),[visibleRestosAll]);
+
+  // Mémorise la page affichée pour la retrouver au rechargement
+  useEffect(()=>{
+    try{localStorage.setItem('lnd_nav',JSON.stringify({module,opView,comView,periodeRapport,opTab,opSelectedId:opSelected?opSelected.id:null}));}catch{}
+  },[module,opView,comView,periodeRapport,opTab,opSelected]);
 
   // ── LOGIN — après tous les hooks ──
   if(!currentUser) return <LoginScreen onLogin={u=>login(u)}/>;
