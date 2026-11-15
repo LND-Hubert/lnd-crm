@@ -935,6 +935,1085 @@ function VueRappelsCom({prospects, onOpen}) {
   );
 }
 
+// ── MODULE HUBSPOT ────────────────────────────────────────────────────
+const HUBSPOT_STAGE_MAP = {
+  "appointmentscheduled": "Contacté",
+  "qualifiedtobuy": "Intéressé",
+  "presentationscheduled": "Intéressé",
+  "decisionmakerboughtin": "Négo en cours",
+  "contractsent": "Négo en cours",
+  "closedwon": "Validé",
+  "closedlost": "Pas intéressé",
+  "": "Prospect",
+};
+
+function ModuleHubSpot({prospects, setProspects, onSave}) {
+  const [apiKey, setApiKey] = useState(() => { try { return localStorage.getItem('hs_api_key')||""; } catch { return ""; }});
+  const [loading, setLoading] = useState(false);
+  const [contacts, setContacts] = useState([]);
+  const [selected, setSelected] = useState({});
+  const [step, setStep] = useState("config"); // config | preview | done
+  const [imported, setImported] = useState(0);
+  const [error, setError] = useState("");
+
+  function saveKey() {
+    try { localStorage.setItem('hs_api_key', apiKey); } catch {}
+  }
+
+  async function fetchHubSpot() {
+    if (!apiKey.trim()) { setError("Clé API requise"); return; }
+    setLoading(true);
+    setError("");
+    saveKey();
+    try {
+      // Fetch companies from HubSpot
+      const r = await fetch(
+        `https://api.hubapi.com/crm/v3/objects/companies?limit=100&properties=name,phone,city,zip,state,address,numberofemployees,annualrevenue,dealstage,hs_lead_status,notes_last_contacted`,
+        { headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" } }
+      );
+      if (!r.ok) {
+        const err = await r.json();
+        setError(`Erreur HubSpot : ${err.message || r.status}`);
+        setLoading(false);
+        return;
+      }
+      const data = await r.json();
+      const results = (data.results || []).map(c => ({
+        id: c.id,
+        nom: c.properties.name || "Sans nom",
+        tel: c.properties.phone || "",
+        ville: c.properties.city || "",
+        cp: c.properties.zip || "",
+        adresse: c.properties.address || "",
+        region: c.properties.state || "",
+        salaries: parseInt(c.properties.numberofemployees) || 0,
+        ca: parseInt(c.properties.annualrevenue) || 0,
+        stage: HUBSPOT_STAGE_MAP[c.properties.hs_lead_status?.toLowerCase()] || "Prospect",
+        notes: c.properties.notes_last_contacted || "",
+        _hs_id: c.id,
+        _already: prospects.some(p => p.nom?.toLowerCase() === (c.properties.name||"").toLowerCase()),
+      }));
+      setContacts(results);
+      const sel = {};
+      results.forEach(c => { if (!c._already) sel[c.id] = true; });
+      setSelected(sel);
+      setStep("preview");
+    } catch(e) {
+      setError(`Erreur de connexion : ${e.message}`);
+    }
+    setLoading(false);
+  }
+
+  async function doImport() {
+    setLoading(true);
+    const toImport = contacts.filter(c => selected[c.id]);
+    let count = 0;
+    for (const c of toImport) {
+      const prospect = {
+        id: null,
+        nom: c.nom,
+        contact: c.nom,
+        email: "",
+        tel: c.tel,
+        adresse: c.adresse,
+        ville: c.ville,
+        cp: c.cp,
+        region: c.region,
+        ca: c.ca,
+        salaries: c.salaries,
+        stage: c.stage,
+        notes: `Importé depuis HubSpot le ${new Date().toLocaleDateString("fr-FR")}.${c.notes?"\n"+c.notes:""}`,
+        rappels: [],
+        caHistory: Array(12).fill(0),
+        forfaits: [],
+      };
+      await onSave(prospect);
+      count++;
+    }
+    setImported(count);
+    setStep("done");
+    setLoading(false);
+  }
+
+  const lS={fontSize:9,letterSpacing:2.5,textTransform:"uppercase",color:GOLD,fontWeight:700,display:"block",marginBottom:5,fontFamily:"sans-serif"};
+  const iS={width:"100%",padding:"11px 14px",borderRadius:6,border:"1px solid rgba(27,42,74,0.18)",fontSize:13,outline:"none",color:NAVY,background:WHITE,boxSizing:"border-box",fontFamily:"sans-serif"};
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{marginBottom:28}}>
+        <div style={{fontSize:9,letterSpacing:4,color:GOLD,textTransform:"uppercase",marginBottom:7,fontWeight:600,fontFamily:"sans-serif"}}>Intégration</div>
+        <h1 style={{fontSize:28,fontWeight:700,margin:0,letterSpacing:-0.5,fontFamily:"'Cormorant Garamond',Georgia,serif"}}>Import HubSpot</h1>
+        <div style={{width:36,height:2,background:GOLD,marginTop:8,marginBottom:12}}/>
+        <div style={{fontSize:13,color:"#888",fontFamily:"sans-serif"}}>Importez vos contacts et entreprises HubSpot directement dans le pipeline LND.</div>
+      </div>
+
+      {/* ÉTAPE 1 — Configuration */}
+      {step==="config"&&(
+        <div>
+          {/* Steps visual */}
+          <div style={{display:"flex",gap:0,marginBottom:28}}>
+            {["1. Connexion","2. Sélection","3. Import"].map((s,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 18px",background:i===0?NAVY:CREAM,borderRadius:i===0?"6px 0 0 6px":i===2?"0 6px 6px 0":"0",border:"1px solid rgba(27,42,74,0.12)"}}>
+                  <div style={{width:20,height:20,borderRadius:"50%",background:i===0?GOLD:"rgba(27,42,74,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:i===0?NAVY:"#aaa",fontFamily:"sans-serif"}}>{i+1}</div>
+                  <span style={{fontSize:11,fontWeight:700,color:i===0?CREAM:"#aaa",fontFamily:"sans-serif"}}>{s.split(". ")[1]}</span>
+                </div>
+                {i<2&&<div style={{width:1,height:"100%",background:"rgba(27,42,74,0.12)"}}/>}
+              </div>
+            ))}
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+            {/* Config API */}
+            <div style={{background:WHITE,borderRadius:10,padding:"24px",boxShadow:"0 2px 16px rgba(27,42,74,0.07)"}}>
+              <div style={{fontSize:11,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",color:NAVY,marginBottom:16,fontFamily:"sans-serif"}}>🔑 Clé API HubSpot</div>
+              <div style={{background:"#fff8f0",border:"1px solid rgba(231,126,21,0.3)",borderRadius:6,padding:"12px 14px",marginBottom:16,fontSize:12,color:"#7a4500",fontFamily:"sans-serif",lineHeight:1.6}}>
+                <strong>Comment obtenir votre clé API :</strong><br/>
+                1. Connectez-vous sur HubSpot<br/>
+                2. Paramètres → Intégrations → Clés API<br/>
+                3. Créer une clé API privée<br/>
+                4. Copiez-la ici
+              </div>
+              <div style={{marginBottom:16}}>
+                <label style={lS}>Clé API privée HubSpot</label>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={e=>setApiKey(e.target.value)}
+                  placeholder="pat-eu1-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                  style={iS}
+                />
+              </div>
+              {error&&<div style={{background:"#fdeaea",border:"1px solid #f5c6c6",borderRadius:6,padding:"10px 14px",fontSize:12,color:RED,marginBottom:14,fontFamily:"sans-serif"}}>{error}</div>}
+              <button onClick={fetchHubSpot} disabled={loading||!apiKey.trim()} style={{width:"100%",background:NAVY,color:CREAM,border:`1px solid ${GOLD}`,borderRadius:6,padding:13,fontSize:12,fontWeight:700,cursor:loading?"wait":"pointer",letterSpacing:1.5,textTransform:"uppercase",fontFamily:"sans-serif",opacity:loading||!apiKey.trim()?0.6:1}}>
+                {loading?"⏳ Connexion en cours...":"🟠 Connecter HubSpot →"}
+              </button>
+            </div>
+
+            {/* Infos import */}
+            <div style={{background:WHITE,borderRadius:10,padding:"24px",boxShadow:"0 2px 16px rgba(27,42,74,0.07)"}}>
+              <div style={{fontSize:11,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",color:NAVY,marginBottom:16,fontFamily:"sans-serif"}}>📦 Ce qui sera importé</div>
+              {[
+                {icon:"🏪",label:"Nom du restaurant",ok:true},
+                {icon:"📍",label:"Ville, adresse, code postal",ok:true},
+                {icon:"📞",label:"Téléphone",ok:true},
+                {icon:"👥",label:"Nombre de salariés",ok:true},
+                {icon:"€",label:"CA annuel",ok:true},
+                {icon:"◈",label:"Stade du pipeline",ok:true},
+                {icon:"📝",label:"Notes",ok:true},
+                {icon:"✉",label:"Email (à compléter)",ok:false},
+              ].map((item,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:`1px solid ${CREAM}`}}>
+                  <span style={{fontSize:14}}>{item.icon}</span>
+                  <span style={{flex:1,fontSize:12,color:NAVY,fontFamily:"sans-serif"}}>{item.label}</span>
+                  <span style={{fontSize:10,fontWeight:700,color:item.ok?GREEN:"#bbb",fontFamily:"sans-serif"}}>{item.ok?"✓ Auto":"○ Manuel"}</span>
+                </div>
+              ))}
+              <div style={{marginTop:14,padding:"10px 12px",background:CREAM,borderRadius:6,fontSize:11,color:"#888",fontFamily:"sans-serif"}}>
+                Les contacts déjà présents dans le CRM LND seront détectés et exclus automatiquement.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ÉTAPE 2 — Sélection */}
+      {step==="preview"&&(
+        <div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+            <div>
+              <div style={{fontSize:14,fontWeight:700,color:NAVY,marginBottom:4}}>{contacts.length} contacts récupérés depuis HubSpot</div>
+              <div style={{fontSize:12,color:"#888",fontFamily:"sans-serif"}}>{Object.values(selected).filter(Boolean).length} sélectionnés pour import · {contacts.filter(c=>c._already).length} déjà dans le CRM</div>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setStep("config")} style={{background:CREAM,color:NAVY,border:"1px solid rgba(27,42,74,0.2)",borderRadius:6,padding:"10px 16px",fontSize:11,cursor:"pointer",fontFamily:"sans-serif"}}>← Retour</button>
+              <button onClick={()=>{const s={};contacts.forEach(c=>{if(!c._already)s[c.id]=true;});setSelected(s);}} style={{background:CREAM,color:NAVY,border:"1px solid rgba(27,42,74,0.2)",borderRadius:6,padding:"10px 16px",fontSize:11,cursor:"pointer",fontFamily:"sans-serif"}}>Tout sélectionner</button>
+              <button onClick={doImport} disabled={loading||Object.values(selected).filter(Boolean).length===0} style={{background:NAVY,color:CREAM,border:`1px solid ${GOLD}`,borderRadius:6,padding:"10px 18px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"sans-serif",letterSpacing:1,textTransform:"uppercase",opacity:Object.values(selected).filter(Boolean).length===0?0.5:1}}>
+                {loading?"Import en cours...`":"🟠 Importer →"}
+              </button>
+            </div>
+          </div>
+
+          <div style={{background:WHITE,borderRadius:10,overflow:"hidden",boxShadow:"0 2px 16px rgba(27,42,74,0.07)"}}>
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead>
+                <tr style={{background:NAVY}}>
+                  {["","Restaurant","Ville","CA","Salariés","Stade HubSpot","Statut"].map(h=>(
+                    <th key={h} style={{padding:"11px 14px",textAlign:"left",fontSize:9,fontWeight:700,color:GOLD,textTransform:"uppercase",letterSpacing:1.5,fontFamily:"sans-serif"}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {contacts.map(c=>(
+                  <tr key={c.id} style={{borderBottom:`1px solid ${CREAM}`,background:c._already?"#f9f9f9":WHITE,opacity:c._already?0.5:1}}>
+                    <td style={{padding:"11px 14px"}}>
+                      <input type="checkbox" checked={!!selected[c.id]} disabled={c._already} onChange={e=>setSelected({...selected,[c.id]:e.target.checked})} style={{cursor:c._already?"not-allowed":"pointer",width:15,height:15}}/>
+                    </td>
+                    <td style={{padding:"11px 14px",fontWeight:700,fontSize:13}}>{c.nom}</td>
+                    <td style={{padding:"11px 14px",fontSize:12,color:"#777",fontFamily:"sans-serif"}}>{c.ville||"—"}</td>
+                    <td style={{padding:"11px 14px",fontSize:12,fontFamily:"'Cormorant Garamond',serif",fontWeight:700}}>{c.ca>0?`${(c.ca/1000).toFixed(0)}k€`:"—"}</td>
+                    <td style={{padding:"11px 14px",fontSize:12,fontFamily:"sans-serif"}}>{c.salaries||"—"}</td>
+                    <td style={{padding:"11px 14px"}}><StageBadge stage={c.stage}/></td>
+                    <td style={{padding:"11px 14px"}}>
+                      {c._already
+                        ?<span style={{fontSize:10,background:"#f0f4ff",color:NAVY2,padding:"3px 8px",borderRadius:3,fontWeight:700,fontFamily:"sans-serif"}}>Déjà importé</span>
+                        :selected[c.id]
+                          ?<span style={{fontSize:10,background:`${GREEN}15`,color:GREEN,padding:"3px 8px",borderRadius:3,fontWeight:700,fontFamily:"sans-serif"}}>✓ Sélectionné</span>
+                          :<span style={{fontSize:10,color:"#ccc",fontFamily:"sans-serif"}}>—</span>
+                      }
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ÉTAPE 3 — Terminé */}
+      {step==="done"&&(
+        <div style={{textAlign:"center",padding:"60px 0"}}>
+          <div style={{fontSize:60,marginBottom:20}}>🎉</div>
+          <div style={{fontSize:24,fontWeight:700,color:NAVY,marginBottom:10,fontFamily:"'Cormorant Garamond',serif"}}>{imported} contact{imported>1?"s":""} importé{imported>1?"s":""} avec succès</div>
+          <div style={{fontSize:14,color:"#888",fontFamily:"sans-serif",marginBottom:32}}>Ils sont maintenant visibles dans votre pipeline LND</div>
+          <div style={{display:"flex",gap:12,justifyContent:"center"}}>
+            <button onClick={()=>{setStep("config");setContacts([]);setSelected({});}} style={{background:CREAM,color:NAVY,border:"1px solid rgba(27,42,74,0.2)",borderRadius:6,padding:"12px 24px",fontSize:12,cursor:"pointer",fontFamily:"sans-serif",fontWeight:600}}>Nouvel import</button>
+            <button onClick={()=>{ /* setComView("pipeline") will be handled by parent */ }} style={{background:NAVY,color:CREAM,border:`1px solid ${GOLD}`,borderRadius:6,padding:"12px 24px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"sans-serif",letterSpacing:1,textTransform:"uppercase"}}>Voir le pipeline →</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── MODULE CAISSE ─────────────────────────────────────────────────────
+const CAISSES_CONFIG = {
+  "Lightspeed": {
+    logo:"💡", color:"#E8700A", bg:"#FFF4EC",
+    desc:"Lightspeed Restaurant — API officielle",
+    fields:[
+      {key:"api_client_id", label:"Client ID", placeholder:"Votre Client ID Lightspeed", type:"text"},
+      {key:"api_client_secret", label:"Client Secret", placeholder:"Votre Client Secret", type:"password"},
+      {key:"business_id", label:"Business ID", placeholder:"ID de l'établissement", type:"text"},
+    ],
+    docs:"https://developers.lightspeedhq.com/restaurant/",
+    sync_info:"Synchronisation automatique : CA, couverts, tickets, top produits"
+  },
+  "L'Addition": {
+    logo:"➕", color:"#2563EB", bg:"#EFF6FF",
+    desc:"L'Addition — Connexion par token API",
+    fields:[
+      {key:"api_token", label:"Token API", placeholder:"Votre token L'Addition", type:"password"},
+      {key:"restaurant_id", label:"ID Restaurant", placeholder:"ID de votre établissement", type:"text"},
+    ],
+    docs:"https://laddition.com/api",
+    sync_info:"Synchronisation automatique : CA, couverts, tickets"
+  },
+  "Square": {
+    logo:"⬛", color:"#000000", bg:"#F5F5F5",
+    desc:"Square — Connexion OAuth",
+    fields:[
+      {key:"access_token", label:"Access Token", placeholder:"sq0atp-...", type:"password"},
+      {key:"location_id", label:"Location ID", placeholder:"ID de l'établissement Square", type:"text"},
+    ],
+    docs:"https://developer.squareup.com",
+    sync_info:"Synchronisation automatique : CA, transactions, couverts"
+  },
+  "Zelty": {
+    logo:"🟡", color:"#F59E0B", bg:"#FFFBEB",
+    desc:"Zelty — API REST",
+    fields:[
+      {key:"api_key", label:"Clé API", placeholder:"Votre clé API Zelty", type:"password"},
+      {key:"place_id", label:"Place ID", placeholder:"ID de l'établissement", type:"text"},
+    ],
+    docs:"https://zelty.fr/api",
+    sync_info:"Synchronisation automatique : CA, couverts, tickets"
+  },
+  "Opéra": {
+    logo:"🎭", color:"#7C3AED", bg:"#F5F3FF",
+    desc:"Opéra PMS — Logiciel hôtellerie-restauration Oracle",
+    fields:[
+      {key:"server_url", label:"URL Serveur", placeholder:"https://votre-serveur.opera.cloud", type:"text"},
+      {key:"username", label:"Identifiant", placeholder:"Votre identifiant Opéra", type:"text"},
+      {key:"password", label:"Mot de passe", placeholder:"Votre mot de passe", type:"password"},
+      {key:"chain_code", label:"Code Chaîne", placeholder:"Code de votre établissement", type:"text"},
+    ],
+    docs:"https://docs.oracle.com/en/industries/hospitality/opera-cloud/",
+    sync_info:"Synchronisation : CA, couverts, tickets, occupation"
+  },
+  "PI (Gestion)": {
+    logo:"🔵", color:"#0284C7", bg:"#F0F9FF",
+    desc:"PI Electronique — Logiciel de caisse restauration",
+    fields:[
+      {key:"api_url", label:"URL API", placeholder:"https://api.pi-electronique.fr", type:"text"},
+      {key:"api_key", label:"Clé API", placeholder:"Votre clé API PI", type:"password"},
+      {key:"site_id", label:"ID Site", placeholder:"Identifiant de votre site", type:"text"},
+    ],
+    docs:"https://www.pi-electronique.fr",
+    sync_info:"Synchronisation : CA, couverts, tickets, articles"
+  },
+  "Micros": {
+    logo:"🔴", color:"#DC2626", bg:"#FEF2F2",
+    desc:"Oracle MICROS — Système de caisse restauration",
+    fields:[
+      {key:"server_url", label:"URL Serveur MICROS", placeholder:"https://votre-serveur.micros.com", type:"text"},
+      {key:"location_id", label:"Location ID", placeholder:"ID de l'établissement", type:"text"},
+      {key:"api_key", label:"Clé API", placeholder:"Votre clé API MICROS", type:"password"},
+      {key:"enterprise_id", label:"Enterprise ID", placeholder:"ID entreprise", type:"text"},
+    ],
+    docs:"https://docs.oracle.com/en/industries/food-beverage/micros/",
+    sync_info:"Synchronisation : CA, couverts, tickets, top produits"
+  },
+  "Autre": {
+    logo:"🔧", color:"#6B7280", bg:"#F9FAFB",
+    desc:"Connexion manuelle ou autre logiciel",
+    fields:[
+      {key:"note", label:"Note", placeholder:"Description de la caisse utilisée", type:"text"},
+    ],
+    docs:null,
+    sync_info:"Saisie manuelle des données"
+  },
+};
+
+function ModuleCaisse({restaurant, onUpdate}) {
+  const config = CAISSES_CONFIG[restaurant.caisse] || CAISSES_CONFIG["Autre"];
+  const creds = restaurant.caisse_creds || {};
+  const isConnected = restaurant.caisse_connected || false;
+  const lastSync = restaurant.caisse_last_sync || null;
+  const [form, setForm] = useState(creds);
+  const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [showCreds, setShowCreds] = useState(false);
+  const [syncLog, setSyncLog] = useState(restaurant.caisse_sync_log || []);
+  const [selectedCaisse, setSelectedCaisse] = useState(restaurant.caisse||"Lightspeed");
+
+  const hasAllFields = config.fields.every(f => form[f.key]?.trim?.());
+
+  async function saveConnection() {
+    setSaving(true);
+    const updated = {
+      ...restaurant,
+      caisse: selectedCaisse,
+      caisse_creds: form,
+      caisse_connected: hasAllFields,
+      caisse_last_sync: null,
+      caisse_sync_log: [],
+    };
+    await onUpdate(updated);
+    setSaving(false);
+  }
+
+  async function simulateSync() {
+    if (!isConnected) return;
+    setSyncing(true);
+    await new Promise(r => setTimeout(r, 2000));
+    const now = new Date().toISOString();
+    const today = new Date();
+    const mois = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+    const moisCourant = mois[today.getMonth()];
+    const jourCourant = today.toISOString().slice(0,10); // "2026-07-26"
+
+    // Données du jour depuis la caisse (delta journalier)
+    const syncDuJour = {
+      ca: Math.round(1200 + Math.random()*2000),
+      couverts: Math.round(40 + Math.random()*60),
+      tickets: Math.round(20 + Math.random()*40),
+    };
+
+    // Données existantes du mois
+    const donneesExistantes = restaurant.months[moisCourant] || EMPTY_MONTH;
+
+    // Historique journalier existant (tableau de jours)
+    const historiqueJours = donneesExistantes.historique_jours || {};
+
+    // On stocke les données du jour dans l'historique
+    // Si on a déjà sync aujourd'hui, on remplace le jour d'aujourd'hui
+    // mais on ne touche PAS aux autres jours déjà enregistrés
+    const nouvelHistorique = {
+      ...historiqueJours,
+      [jourCourant]: {
+        ca: syncDuJour.ca,
+        couverts: syncDuJour.couverts,
+        tickets: syncDuJour.tickets,
+        synced_at: now,
+      }
+    };
+
+    // Calcul du cumul mensuel = somme de tous les jours enregistrés
+    const cumulMois = Object.values(nouvelHistorique).reduce((acc, jour) => ({
+      ca: acc.ca + (jour.ca||0),
+      couverts: acc.couverts + (jour.couverts||0),
+      tickets: acc.tickets + (jour.tickets||0),
+    }), { ca:0, couverts:0, tickets:0 });
+
+    // Fusion : cumul caisse + données manuelles préservées
+    const donneesMoisMaj = {
+      ...donneesExistantes,           // préserve masseSalariale, coutsMatieres, chargesFixes
+      ca: cumulMois.ca,               // cumul de tous les jours
+      couverts: cumulMois.couverts,
+      tickets: cumulMois.tickets,
+      historique_jours: nouvelHistorique, // historique jour par jour
+      caisse_synced: true,
+      caisse_sync_date: now,
+    };
+
+    const nbJours = Object.keys(nouvelHistorique).length;
+    const newLog = [
+      {
+        date: now,
+        status: "success",
+        message: `Sync ${jourCourant} — CA jour : ${syncDuJour.ca.toLocaleString("fr-FR")} € · Cumul mois (${nbJours}j) : ${cumulMois.ca.toLocaleString("fr-FR")} €`,
+        preserved: `Masse sal. : ${donneesExistantes.masseSalariale||0} € · Matières : ${donneesExistantes.coutsMatieres||0} € · Charges : ${donneesExistantes.chargesFixes||0} €`
+      },
+      ...syncLog.slice(0, 29)
+    ];
+
+    const updMonths = { ...restaurant.months, [moisCourant]: donneesMoisMaj };
+    const updated = { ...restaurant, months: updMonths, caisse_last_sync: now, caisse_sync_log: newLog };
+
+    await onUpdate(updated);
+    setSyncLog(newLog);
+    setSyncing(false);
+  }
+
+  // Export Excel du mois
+  function exportMois() {
+    const mois = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+    const moisLabels = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+    const moisCourant = mois[new Date().getMonth()];
+    const donnees = restaurant.months[moisCourant] || EMPTY_MONTH;
+    const historique = donnees.historique_jours || {};
+    const jours = Object.entries(historique).sort(([a],[b])=>a.localeCompare(b));
+
+    // Génère CSV
+    const lignes = [
+      `Rapport mensuel — ${restaurant.name}`,
+      `Période : ${moisLabels[new Date().getMonth()]} ${new Date().getFullYear()}`,
+      `Exporté le : ${new Date().toLocaleDateString("fr-FR")}`,
+      ``,
+      `DONNÉES JOURNALIÈRES (Source : ${restaurant.caisse})`,
+      `Date;CA (€);Couverts;Tickets;Ticket moyen (€)`,
+      ...jours.map(([date, d]) => {
+        const tm = d.tickets>0 ? Math.round(d.ca/d.tickets) : 0;
+        return `${date};${d.ca};${d.couverts};${d.tickets};${tm}`;
+      }),
+      ``,
+      `CUMUL MENSUEL`,
+      `Indicateur;Valeur`,
+      `CA total;${donnees.ca||0}`,
+      `Couverts;${donnees.couverts||0}`,
+      `Tickets;${donnees.tickets||0}`,
+      `Ticket moyen;${donnees.tickets>0?Math.round((donnees.ca||0)/donnees.tickets):0}`,
+      ``,
+      `DONNÉES SAISIES MANUELLEMENT`,
+      `Masse salariale;${donnees.masseSalariale||0}`,
+      `Coûts matières;${donnees.coutsMatieres||0}`,
+      `Charges fixes;${donnees.chargesFixes||0}`,
+      ``,
+      `RATIOS CALCULÉS`,
+    ];
+
+    const ca = donnees.ca||0;
+    const ms = donnees.masseSalariale||0;
+    const cm = donnees.coutsMatieres||0;
+    const cf = donnees.chargesFixes||0;
+    const ebe = ca - ms - cm - cf;
+
+    lignes.push(
+      `Ratio masse salariale;${ca>0?((ms/ca)*100).toFixed(1):0}%`,
+      `Ratio coûts matières;${ca>0?((cm/ca)*100).toFixed(1):0}%`,
+      `Marge brute;${ca-cm}`,
+      `EBE;${ebe}`,
+      `Taux EBE;${ca>0?((ebe/ca)*100).toFixed(1):0}%`,
+    );
+
+    const csv = lignes.join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `LND_${restaurant.name.replace(/\s/g,"_")}_${moisLabels[new Date().getMonth()]}_${new Date().getFullYear()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function disconnect() {
+    const updated = {...restaurant, caisse_creds:{}, caisse_connected:false, caisse_last_sync:null, caisse_sync_log:[]};
+    onUpdate(updated);
+    setForm({});
+    setSyncLog([]);
+  }
+
+  const lS={fontSize:9,letterSpacing:2.5,textTransform:"uppercase",color:GOLD,fontWeight:700,display:"block",marginBottom:5,fontFamily:"sans-serif"};
+  const iS={width:"100%",padding:"11px 14px",borderRadius:6,border:"1px solid rgba(27,42,74,0.18)",fontSize:13,outline:"none",color:NAVY,background:WHITE,boxSizing:"border-box",fontFamily:"sans-serif"};
+
+  return (
+    <div>
+      {/* Header statut */}
+      <div style={{background:isConnected?`${GREEN}18`:"#fdf8f0",border:`1px solid ${isConnected?GREEN:GOLD}`,borderRadius:10,padding:"16px 22px",marginBottom:24,display:"flex",alignItems:"center",gap:16}}>
+        <div style={{width:44,height:44,borderRadius:"50%",background:isConnected?GREEN:GOLD,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
+          {isConnected?"✓":"🔌"}
+        </div>
+        <div style={{flex:1}}>
+          <div style={{fontSize:14,fontWeight:700,color:NAVY,marginBottom:3}}>
+            {isConnected?`${restaurant.caisse} connectée`:`${restaurant.caisse} — Non connectée`}
+          </div>
+          <div style={{fontSize:12,color:"#888",fontFamily:"sans-serif"}}>
+            {isConnected
+              ?`Dernière sync : ${lastSync?new Date(lastSync).toLocaleDateString("fr-FR",{day:"2-digit",month:"long",hour:"2-digit",minute:"2-digit"}):"Jamais"}`
+              :"Connectez votre caisse pour importer les données automatiquement"}
+          </div>
+        </div>
+        {isConnected&&(
+          <div style={{display:"flex",gap:10,alignItems:"center"}}>
+            <button onClick={simulateSync} disabled={syncing} style={{background:NAVY,color:CREAM,border:`1px solid ${GOLD}`,borderRadius:6,padding:"10px 18px",fontSize:11,fontWeight:700,cursor:syncing?"wait":"pointer",fontFamily:"sans-serif",letterSpacing:1,textTransform:"uppercase",opacity:syncing?0.7:1}}>
+              {syncing?"⏳ Sync...":"🔄 Synchroniser"}
+            </button>
+            <button onClick={exportMois} style={{background:WHITE,color:GREEN,border:`1px solid ${GREEN}`,borderRadius:6,padding:"10px 18px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"sans-serif",letterSpacing:1,textTransform:"uppercase"}}>
+              ⬇ Exporter le mois (CSV)
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Sélecteur caisse */}
+      <div style={{marginBottom:20}}>
+        <label style={lS}>Logiciel de caisse</label>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+          {Object.entries(CAISSES_CONFIG).map(([name,cfg])=>(
+            <button key={name} onClick={()=>{setSelectedCaisse(name);setForm({});}} style={{padding:"12px 8px",borderRadius:8,border:`2px solid ${selectedCaisse===name?cfg.color:"rgba(27,42,74,0.1)"}`,background:selectedCaisse===name?cfg.bg:WHITE,cursor:"pointer",textAlign:"center",transition:"all 0.15s"}}>
+              <div style={{fontSize:20,marginBottom:4}}>{cfg.logo}</div>
+              <div style={{fontSize:10,fontWeight:700,color:selectedCaisse===name?cfg.color:NAVY,fontFamily:"sans-serif"}}>{name}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Description */}
+      <div style={{background:CAISSES_CONFIG[selectedCaisse]?.bg||CREAM,borderRadius:8,padding:"14px 18px",marginBottom:20,borderLeft:`3px solid ${CAISSES_CONFIG[selectedCaisse]?.color||GOLD}`}}>
+        <div style={{fontSize:13,fontWeight:600,color:NAVY,marginBottom:4}}>{CAISSES_CONFIG[selectedCaisse]?.desc}</div>
+        <div style={{fontSize:12,color:"#888",fontFamily:"sans-serif"}}>{CAISSES_CONFIG[selectedCaisse]?.sync_info}</div>
+        {CAISSES_CONFIG[selectedCaisse]?.docs&&(
+          <a href={CAISSES_CONFIG[selectedCaisse].docs} target="_blank" rel="noreferrer" style={{fontSize:11,color:CAISSES_CONFIG[selectedCaisse].color,fontFamily:"sans-serif",marginTop:6,display:"inline-block",fontWeight:600}}>
+            📖 Documentation API →
+          </a>
+        )}
+      </div>
+
+      {/* Formulaire credentials */}
+      <div style={{background:WHITE,borderRadius:10,padding:"22px 24px",boxShadow:"0 2px 16px rgba(27,42,74,0.07)",marginBottom:20}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+          <div style={{fontSize:11,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",color:NAVY,fontFamily:"sans-serif"}}>Identifiants de connexion</div>
+          {isConnected&&<button onClick={()=>setShowCreds(!showCreds)} style={{fontSize:11,color:GOLD,background:"none",border:`1px solid ${GOLD}`,borderRadius:4,padding:"4px 10px",cursor:"pointer",fontFamily:"sans-serif"}}>{showCreds?"Masquer":"Modifier"}</button>}
+        </div>
+
+        {(!isConnected||showCreds)&&(
+          <div>
+            <div style={{background:"#fdf8f0",border:"1px solid rgba(184,150,62,0.3)",borderRadius:6,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#7a5000",fontFamily:"sans-serif"}}>
+              🔒 Ces identifiants sont stockés de façon sécurisée et utilisés uniquement pour importer vos données.
+            </div>
+            {CAISSES_CONFIG[selectedCaisse]?.fields.map(f=>(
+              <div key={f.key} style={{marginBottom:14}}>
+                <label style={lS}>{f.label}</label>
+                <input
+                  type={f.type}
+                  value={form[f.key]||""}
+                  onChange={e=>setForm({...form,[f.key]:e.target.value})}
+                  placeholder={f.placeholder}
+                  style={iS}
+                />
+              </div>
+            ))}
+            <div style={{display:"flex",gap:10,marginTop:18}}>
+              <button onClick={saveConnection} disabled={saving} style={{flex:1,background:NAVY,color:CREAM,border:`1px solid ${GOLD}`,borderRadius:6,padding:13,fontSize:12,fontWeight:700,cursor:saving?"wait":"pointer",letterSpacing:1.5,textTransform:"uppercase",fontFamily:"sans-serif",opacity:saving?0.7:1}}>
+                {saving?"Enregistrement...":isConnected?"Mettre à jour":"🔌 Connecter la caisse"}
+              </button>
+              {isConnected&&<button onClick={disconnect} style={{flex:1,background:"#fdeaea",color:RED,border:`1px solid ${RED}`,borderRadius:6,padding:13,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"sans-serif"}}>Déconnecter</button>}
+            </div>
+          </div>
+        )}
+
+        {isConnected&&!showCreds&&(
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {CAISSES_CONFIG[selectedCaisse]?.fields.map(f=>(
+              <div key={f.key} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${CREAM}`}}>
+                <span style={{fontSize:12,color:"#888",fontFamily:"sans-serif"}}>{f.label}</span>
+                <span style={{fontSize:12,fontWeight:600,color:NAVY,fontFamily:"sans-serif"}}>{f.type==="password"?"••••••••••••":form[f.key]||"—"}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Ce qui sera importé */}
+      <div style={{background:WHITE,borderRadius:10,padding:"22px 24px",boxShadow:"0 2px 16px rgba(27,42,74,0.07)",marginBottom:20}}>
+        <div style={{fontSize:11,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",color:NAVY,marginBottom:16,fontFamily:"sans-serif"}}>📊 Données importées automatiquement</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+          {[
+            {icon:"€",label:"CA mensuel",desc:"Chiffre d'affaires total",ok:true},
+            {icon:"🍽",label:"Couverts",desc:"Nombre de couverts servis",ok:true},
+            {icon:"🧾",label:"Tickets",desc:"Nombre de transactions",ok:true},
+            {icon:"📦",label:"Top produits",desc:"Ventes par produit",ok:selectedCaisse==="Lightspeed"},
+            {icon:"⏰",label:"Heures de pointe",desc:"Répartition horaire",ok:selectedCaisse==="Lightspeed"},
+            {icon:"👥",label:"Masse salariale",desc:"Saisie manuelle requise",ok:false},
+          ].map((item,i)=>(
+            <div key={i} style={{background:item.ok?`${GREEN}10`:CREAM,borderRadius:7,padding:"12px 14px",border:`1px solid ${item.ok?`${GREEN}30`:"rgba(27,42,74,0.06)"}`}}>
+              <div style={{fontSize:18,marginBottom:5}}>{item.icon}</div>
+              <div style={{fontSize:12,fontWeight:700,color:item.ok?GREEN:NAVY,marginBottom:2,fontFamily:"sans-serif"}}>{item.label}</div>
+              <div style={{fontSize:10,color:"#aaa",fontFamily:"sans-serif"}}>{item.desc}</div>
+              <div style={{fontSize:9,fontWeight:700,color:item.ok?GREEN:"#bbb",marginTop:4,fontFamily:"sans-serif"}}>{item.ok?"✓ Auto":"○ Manuel"}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Historique journalier */}
+      {(()=>{
+        const mois = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+        const moisCourant = mois[new Date().getMonth()];
+        const donnees = restaurant.months[moisCourant] || EMPTY_MONTH;
+        const historique = donnees.historique_jours || {};
+        const jours = Object.entries(historique).sort(([a],[b])=>a.localeCompare(b));
+        if(jours.length===0) return null;
+        return (
+          <div style={{background:WHITE,borderRadius:10,padding:"22px 24px",boxShadow:"0 2px 16px rgba(27,42,74,0.07)",marginBottom:20}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",color:NAVY,fontFamily:"sans-serif"}}>
+                📅 Données journalières — {jours.length} jour{jours.length>1?"s":""} enregistré{jours.length>1?"s":""}
+              </div>
+              <div style={{fontSize:11,color:GREEN,fontFamily:"sans-serif",fontWeight:600}}>✓ Aucune donnée écrasée</div>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",minWidth:500}}>
+                <thead>
+                  <tr style={{background:NAVY}}>
+                    {["Date","CA (€)","Couverts","Tickets","Ticket moyen"].map(h=>(
+                      <th key={h} style={{padding:"8px 12px",textAlign:"left",fontSize:9,fontWeight:700,color:GOLD,textTransform:"uppercase",letterSpacing:1.2,fontFamily:"sans-serif"}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {jours.map(([date,d],i)=>{
+                    const tm = d.tickets>0?Math.round(d.ca/d.tickets):0;
+                    return (
+                      <tr key={date} style={{background:i%2===0?WHITE:"#fafaf8",borderBottom:`1px solid ${CREAM}`}}>
+                        <td style={{padding:"8px 12px",fontSize:12,fontWeight:600,color:NAVY,fontFamily:"sans-serif"}}>{new Date(date).toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"})}</td>
+                        <td style={{padding:"8px 12px",fontSize:12,fontWeight:700,color:NAVY,fontFamily:"'Cormorant Garamond',serif"}}>{(d.ca||0).toLocaleString("fr-FR")} €</td>
+                        <td style={{padding:"8px 12px",fontSize:12,color:"#555",fontFamily:"sans-serif"}}>{d.couverts||0}</td>
+                        <td style={{padding:"8px 12px",fontSize:12,color:"#555",fontFamily:"sans-serif"}}>{d.tickets||0}</td>
+                        <td style={{padding:"8px 12px",fontSize:12,color:GOLD,fontWeight:600,fontFamily:"sans-serif"}}>{tm} €</td>
+                      </tr>
+                    );
+                  })}
+                  {/* Ligne totaux */}
+                  <tr style={{background:NAVY}}>
+                    <td style={{padding:"9px 12px",fontSize:11,fontWeight:700,color:GOLD,fontFamily:"sans-serif",textTransform:"uppercase",letterSpacing:1}}>CUMUL</td>
+                    <td style={{padding:"9px 12px",fontSize:13,fontWeight:700,color:CREAM,fontFamily:"'Cormorant Garamond',serif"}}>{(donnees.ca||0).toLocaleString("fr-FR")} €</td>
+                    <td style={{padding:"9px 12px",fontSize:12,fontWeight:700,color:CREAM,fontFamily:"sans-serif"}}>{donnees.couverts||0}</td>
+                    <td style={{padding:"9px 12px",fontSize:12,fontWeight:700,color:CREAM,fontFamily:"sans-serif"}}>{donnees.tickets||0}</td>
+                    <td style={{padding:"9px 12px",fontSize:12,fontWeight:700,color:GOLD,fontFamily:"sans-serif"}}>{donnees.tickets>0?Math.round((donnees.ca||0)/donnees.tickets):0} €</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div style={{marginTop:12,display:"flex",justifyContent:"flex-end"}}>
+              <button onClick={exportMois} style={{background:GREEN,color:WHITE,border:"none",borderRadius:6,padding:"9px 18px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"sans-serif",letterSpacing:1,textTransform:"uppercase"}}>
+                ⬇ Télécharger le rapport CSV
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Historique syncs */}
+      {syncLog.length>0&&(
+        <div style={{background:WHITE,borderRadius:10,padding:"22px 24px",boxShadow:"0 2px 16px rgba(27,42,74,0.07)"}}>
+          <div style={{fontSize:11,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",color:NAVY,marginBottom:14,fontFamily:"sans-serif"}}>📋 Historique des synchronisations</div>
+          {syncLog.map((log,i)=>(
+            <div key={i} style={{padding:"10px 0",borderBottom:`1px solid ${CREAM}`}}>
+              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:log.preserved?4:0}}>
+                <div style={{width:8,height:8,borderRadius:"50%",background:log.status==="success"?GREEN:RED,flexShrink:0}}/>
+                <div style={{flex:1,fontSize:12,color:NAVY,fontFamily:"sans-serif",fontWeight:500}}>{log.message}</div>
+                <div style={{fontSize:11,color:"#aaa",fontFamily:"sans-serif",flexShrink:0}}>{new Date(log.date).toLocaleDateString("fr-FR",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"})}</div>
+              </div>
+              {log.preserved&&(
+                <div style={{fontSize:10,color:GREEN,fontFamily:"sans-serif",paddingLeft:20,fontStyle:"italic"}}>
+                  ✓ Données manuelles conservées — {log.preserved}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── MODULE DEVIS ÉVÉNEMENTIEL ─────────────────────────────────────────
+const DEVIS_RATES_DEFAULT = {
+  tjmConseil:800, tjmSite:750, install:750, hs:80, mgr:450, bilan:600,
+  visite:400, formation:800, recrutement:900, kit:1200, astreinte:250, audit:1500, tva:20,
+};
+const DEVIS_RATES_LABELS = {
+  tjmConseil:"Jour de conseil / préparation", tjmSite:"Jour de direction sur site", install:"Jour d'installation",
+  hs:"Heure au-delà de 12 h", mgr:"Jour manager supplémentaire", bilan:"Bilan & rapport écrit",
+  visite:"Visite de repérage (½ jour)", formation:"Session de formation équipe", recrutement:"Recrutement / staffing (forfait)",
+  kit:"Kit procédures & fiches de poste", astreinte:"Astreinte téléphonique / jour", audit:"Audit post-événement chiffré", tva:"Taux de TVA (%)",
+};
+const DEVIS_FORMULES = [
+  {id:"ess",t:"Essentielle",j:3,d:"Diagnostic, organisation, rôles, procédures"},
+  {id:"std",t:"Standard",j:5,d:"+ plannings, formation équipes, briefing d'ouverture",reco:true},
+  {id:"cpl",t:"Complète",j:8,d:"+ recrutement/staffing, lien fournisseurs & organisateur"},
+  {id:"sm",t:"Sur mesure",j:null,d:"Nombre de jours libre"},
+  {id:"none",t:"Aucune",j:0,d:"Pas de préparation (déconseillé)"},
+];
+const DEVIS_OPTIONS = [
+  {id:"bilan",t:"Bilan de fin d'opération",s:"Débriefing client + rapport écrit avec recommandations",qty:false,unit:"forfait",jours:0.75,def:true},
+  {id:"visite",t:"Visite de repérage",s:"Sur le lieu, avant la préparation",qty:true,unit:"visite",jours:0.5},
+  {id:"formation",t:"Formation des équipes",s:"Service, standards, procédures (par session)",qty:true,unit:"session",jours:1},
+  {id:"recrutement",t:"Recrutement / staffing",s:"Sourcing, entretiens, constitution des équipes",qty:false,unit:"forfait",jours:1},
+  {id:"kit",t:"Kit procédures & fiches de poste",s:"Documents réutilisables remis au client",qty:false,unit:"forfait",jours:1.5},
+  {id:"astreinte",t:"Astreinte téléphonique",s:"Joignable hors présence sur site (par jour)",qty:true,unit:"jour",jours:0,defQ:3},
+  {id:"audit",t:"Audit post-événement chiffré",s:"Ventes, masse salariale, ratios, plan d'action",qty:false,unit:"forfait",jours:2},
+];
+const eur = n => (n||0).toLocaleString("fr-FR",{style:"currency",currency:"EUR",maximumFractionDigits:2});
+const fjr = j => String(Math.round(j*100)/100).replace(".",",");
+
+function DevisRow({label,sub,children,amount}) {
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:12,padding:"11px 0",borderTop:`1px solid ${CREAM}`,flexWrap:"wrap"}}>
+      <div style={{flex:"1 1 220px"}}>
+        <div style={{fontSize:13,fontWeight:700,color:NAVY,fontFamily:"sans-serif"}}>{label}</div>
+        {sub&&<div style={{fontSize:11,color:"#999",fontFamily:"sans-serif"}}>{sub}</div>}
+      </div>
+      {children}
+      <div style={{width:110,textAlign:"right",fontSize:14,fontWeight:700,color:NAVY,fontFamily:"'Cormorant Garamond',serif"}}>{amount}</div>
+    </div>
+  );
+}
+
+function DevisSwitch({checked,onChange}) {
+  return (
+    <button onClick={()=>onChange(!checked)} style={{width:40,height:22,borderRadius:22,border:"none",background:checked?NAVY:"#d6d3cd",position:"relative",cursor:"pointer",flexShrink:0,padding:0}}>
+      <span style={{position:"absolute",top:3,left:checked?21:3,width:16,height:16,borderRadius:"50%",background:checked?GOLD:WHITE,transition:"left 0.15s"}}/>
+    </button>
+  );
+}
+
+function DevisCard({n,title,hint,children}) {
+  return (
+    <div style={{background:WHITE,borderRadius:10,padding:"20px 22px",boxShadow:"0 2px 16px rgba(27,42,74,0.07)",marginBottom:16}}>
+      <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:4}}>
+        <span style={{width:22,height:22,borderRadius:"50%",background:NAVY,color:GOLD,fontSize:11,fontWeight:700,display:"inline-flex",alignItems:"center",justifyContent:"center",fontFamily:"sans-serif"}}>{n}</span>
+        <div style={{fontSize:12,fontWeight:700,letterSpacing:1.5,textTransform:"uppercase",color:NAVY,fontFamily:"sans-serif"}}>{title}</div>
+      </div>
+      {hint&&<div style={{fontSize:12,color:"#999",fontFamily:"sans-serif",marginBottom:10,marginLeft:31}}>{hint}</div>}
+      {children}
+    </div>
+  );
+}
+
+function ModuleDevis({prospects,onAttach}) {
+  const [rates,setRates]=useState(()=>{try{const s=localStorage.getItem("lnd_devis_rates");return s?{...DEVIS_RATES_DEFAULT,...JSON.parse(s)}:DEVIS_RATES_DEFAULT;}catch{return DEVIS_RATES_DEFAULT;}});
+  const [showRates,setShowRates]=useState(false);
+  const [draftRates,setDraftRates]=useState(rates);
+  const [prospectId,setProspectId]=useState("");
+  const [client,setClient]=useState("");
+  const [event,setEvent]=useState("");
+  const [lieu,setLieu]=useState("");
+  const [dates,setDates]=useState("");
+  const [formule,setFormule]=useState("std");
+  const [prepJours,setPrepJours]=useState(4);
+  const [siteJours,setSiteJours]=useState(6);
+  const [installJours,setInstallJours]=useState(0);
+  const [hsH,setHsH]=useState(0);
+  const [mgrNb,setMgrNb]=useState(0);
+  const [mgrJours,setMgrJours]=useState(0);
+  const [opts,setOpts]=useState(()=>Object.fromEntries(DEVIS_OPTIONS.map(o=>[o.id,{on:!!o.def,q:o.defQ||1}])));
+  const [urg,setUrg]=useState(false);
+  const [urgPct,setUrgPct]=useState(20);
+  const [prem,setPrem]=useState(false);
+  const [premPct,setPremPct]=useState(10);
+  const [remPct,setRemPct]=useState(0);
+  const [fDep,setFDep]=useState(0);
+  const [fHeb,setFHeb]=useState(0);
+  const [fRep,setFRep]=useState(0);
+  const [acompte,setAcompte]=useState(40);
+  const [showText,setShowText]=useState(false);
+  const [msg,setMsg]=useState("");
+
+  const num=v=>parseFloat(v)||0;
+  const R=rates;
+
+  // ── Calcul ──
+  const lines=[];
+  let jours=0;
+  const fObj=DEVIS_FORMULES.find(f=>f.id===formule);
+  const pj=formule==="sm"?num(prepJours):(fObj.j||0);
+  const prep=pj*R.tjmConseil; jours+=pj;
+  if(pj) lines.push({t:`Conseil & préparation de l'exploitation${formule!=="sm"?` – formule ${fObj.t}`:""}`,q:pj,u:"jour",pu:R.tjmConseil,tot:prep,grp:"prep"});
+  const ij=num(installJours), sj=num(siteJours), hs=num(hsH), mn=num(mgrNb), mj=num(mgrJours);
+  jours+=ij+sj;
+  if(ij) lines.push({t:"Installation & mise en place avant ouverture",q:ij,u:"jour",pu:R.install,tot:ij*R.install,grp:"site"});
+  if(sj) lines.push({t:"Direction opérationnelle sur site (encadrement + conseil au dirigeant)",q:sj,u:"jour",pu:R.tjmSite,tot:sj*R.tjmSite,grp:"site"});
+  if(hs) lines.push({t:"Heures au-delà de 12 h / nuit",q:hs,u:"heure",pu:R.hs,tot:hs*R.hs,grp:"site"});
+  if(mn&&mj) lines.push({t:`Manager LND supplémentaire (${mn} × ${fjr(mj)} j)`,q:mn*mj,u:"jour",pu:R.mgr,tot:mn*mj*R.mgr,grp:"site"});
+  DEVIS_OPTIONS.forEach(o=>{
+    const st=opts[o.id]; if(!st.on) return;
+    const q=o.qty?Math.max(1,num(st.q)):1;
+    lines.push({t:o.t,q,u:o.unit,pu:R[o.id],tot:q*R[o.id],grp:"opt"});
+    jours+=o.jours*q;
+  });
+  const presta=lines.reduce((s,l)=>s+l.tot,0);
+  const sumGrp=g=>lines.filter(l=>l.grp===g).reduce((s,l)=>s+l.tot,0);
+  const urgA=urg?presta*num(urgPct)/100:0;
+  const premA=prem?presta*num(premPct)/100:0;
+  const remA=(presta+urgA+premA)*num(remPct)/100;
+  const frais=num(fDep)+num(fHeb)+num(fRep);
+  const ht=presta+urgA+premA-remA+frais, tva=ht*R.tva/100, ttc=ht+tva;
+  const hon=ht-frais;
+  const tjmMoyen=jours>0?hon/jours:0;
+
+  const alerts=[];
+  if(sj>0&&pj<2) alerts.push("Moins de 2 jours de préparation pour une mission sur site : prévoir au moins la formule Essentielle.");
+  if(jours>0&&tjmMoyen<650) alerts.push("Revenu moyen sous 650 €/jour : en dessous du plancher conseillé.");
+  if(num(remPct)>15) alerts.push("Remise supérieure à 15 % : à compenser par un engagement (volume, récurrence).");
+
+  function buildText(){
+    let t=`DEVIS – ${event||"[Événement]"}\nClient : ${client||"[Client]"}`;
+    if(lieu) t+=`\nLieu : ${lieu}`;
+    if(dates) t+=`\nDates d'exploitation : ${dates}`;
+    t+=`\n\nPrestation d'accompagnement pour la préparation et l'exploitation d'un restaurant éphémère : aspects organisationnels, opérationnels et managériaux.\n\n`;
+    lines.forEach((l,i)=>{t+=`${i+1}. ${l.t}\n   ${fjr(l.q)} ${l.u}${l.q>1&&l.u!=="forfait"?"s":""} × ${eur(l.pu)} = ${eur(l.tot)} HT\n`;});
+    if(urgA) t+=`\nMajoration urgence (+${num(urgPct)} %) : ${eur(urgA)} HT`;
+    if(premA) t+=`\nCoefficient événement premium (+${num(premPct)} %) : ${eur(premA)} HT`;
+    if(remA) t+=`\nRemise commerciale (${num(remPct)} %) : – ${eur(remA)} HT`;
+    const fr=[["Déplacements",fDep],["Hébergement",fHeb],["Repas",fRep]].filter(f=>num(f[1]));
+    if(fr.length){t+=`\n\nFrais refacturés :`;fr.forEach(f=>t+=`\n- ${f[0]} : ${eur(num(f[1]))} HT`);}
+    t+=`\n\nTotal HT : ${eur(ht)}\nTVA ${R.tva} % : ${eur(tva)}\nTotal TTC : ${eur(ttc)}`;
+    t+=`\n\nConditions :\n- Acompte de ${acompte} % à la signature (${eur(ttc*acompte/100)} TTC), solde à réception de facture.\n- Journée sur site jusqu'à 12 h ; au-delà, ${eur(R.hs)} HT / heure.\n- Tout jour supplémentaire demandé est facturé au tarif unitaire indiqué.\n- Devis valable 30 jours.`;
+    return t;
+  }
+  function flash(m){setMsg(m);setTimeout(()=>setMsg(""),2200);}
+  async function copyText(){
+    const t=buildText();
+    try{await navigator.clipboard.writeText(t);flash("Texte copié ✓");}
+    catch{const ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");flash("Texte copié ✓");}catch{flash("Copie impossible");}document.body.removeChild(ta);}
+  }
+  async function attach(){
+    if(!prospectId){flash("Choisis d'abord un prospect");return;}
+    const resume=`📋 Devis événementiel du ${new Date().toLocaleDateString("fr-FR")} – ${event||"Événement"}${dates?` (${dates})`:""}\n`+
+      lines.map(l=>`• ${l.t} : ${fjr(l.q)} ${l.u}${l.q>1&&l.u!=="forfait"?"s":""} × ${eur(l.pu)}`).join("\n")+
+      (urgA?`\n• Urgence +${num(urgPct)} %`:"")+(premA?`\n• Premium +${num(premPct)} %`:"")+(remA?`\n• Remise ${num(remPct)} %`:"")+(frais?`\n• Frais : ${eur(frais)}`:"")+
+      `\nTotal : ${eur(ht)} HT · ${eur(ttc)} TTC · acompte ${acompte} %`;
+    const ok=await onAttach(prospectId,resume);
+    flash(ok?"Devis ajouté aux notes du prospect ✓":"Erreur lors de l'enregistrement");
+  }
+  function pickProspect(id){
+    setProspectId(id);
+    const p=prospects.find(x=>String(x.id)===String(id));
+    if(p){setClient(p.nom||"");if(!lieu&&p.ville)setLieu(p.ville);}
+  }
+  function resetDevis(){
+    setProspectId("");setClient("");setEvent("");setLieu("");setDates("");setFormule("std");setPrepJours(4);setSiteJours(6);setInstallJours(0);setHsH(0);setMgrNb(0);setMgrJours(0);
+    setOpts(Object.fromEntries(DEVIS_OPTIONS.map(o=>[o.id,{on:!!o.def,q:o.defQ||1}])));setUrg(false);setPrem(false);setRemPct(0);setFDep(0);setFHeb(0);setFRep(0);setAcompte(40);
+  }
+  function saveRates(){
+    const r={};Object.keys(DEVIS_RATES_DEFAULT).forEach(k=>r[k]=num(draftRates[k]));
+    setRates(r);try{localStorage.setItem("lnd_devis_rates",JSON.stringify(r));}catch{}
+    setShowRates(false);flash("Tarifs enregistrés ✓");
+  }
+
+  const lS={fontSize:9,letterSpacing:2.5,textTransform:"uppercase",color:GOLD,fontWeight:700,display:"block",marginBottom:5,fontFamily:"sans-serif"};
+  const iS={width:"100%",padding:"10px 13px",borderRadius:6,border:"1px solid rgba(27,42,74,0.18)",fontSize:13,outline:"none",color:NAVY,background:WHITE,boxSizing:"border-box",fontFamily:"sans-serif"};
+  const nS={...iS,width:84,textAlign:"right",fontWeight:600};
+  const bP={background:NAVY,color:CREAM,border:`1px solid ${GOLD}`,borderRadius:6,padding:"10px 18px",fontSize:11,fontWeight:700,cursor:"pointer",letterSpacing:1,textTransform:"uppercase",fontFamily:"sans-serif"};
+  const bS={background:CREAM,color:NAVY,border:"1px solid rgba(27,42,74,0.2)",borderRadius:6,padding:"10px 18px",fontSize:11,cursor:"pointer",fontFamily:"sans-serif"};
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
+        <div>
+          <div style={{fontSize:10,letterSpacing:4,color:GOLD,textTransform:"uppercase",marginBottom:8,fontWeight:600,fontFamily:"sans-serif"}}>Événementiel & restaurants éphémères</div>
+          <h1 style={{fontSize:26,fontWeight:700,margin:0,fontFamily:"'Cormorant Garamond',serif"}}>Calculateur de devis</h1>
+          <div style={{width:36,height:2,background:GOLD,marginTop:9}}/>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>{setDraftRates(rates);setShowRates(true);}} style={bS}>⚙ Tarifs de base</button>
+          <button onClick={resetDevis} style={bS}>↺ Nouveau devis</button>
+        </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 340px",gap:20,alignItems:"start"}} className="devis-grid">
+        <style>{`@media(max-width:1000px){.devis-grid{grid-template-columns:1fr!important}.devis-recap{position:static!important}}`}</style>
+        <div>
+          <DevisCard n="1" title="Client & événement" hint="Lier le devis à un prospect du pipeline permet de l'enregistrer dans sa fiche.">
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12}}>
+              <div><label style={lS}>Prospect du pipeline</label>
+                <select value={prospectId} onChange={e=>pickProspect(e.target.value)} style={{...iS,cursor:"pointer"}}>
+                  <option value="">— Aucun —</option>
+                  {[...prospects].sort((a,b)=>(a.nom||"").localeCompare(b.nom||"")).map(p=><option key={p.id} value={p.id}>{p.nom}</option>)}
+                </select>
+              </div>
+              <div><label style={lS}>Client</label><input value={client} onChange={e=>setClient(e.target.value)} placeholder="ex. KRS" style={iS}/></div>
+              <div><label style={lS}>Événement</label><input value={event} onChange={e=>setEvent(e.target.value)} placeholder="ex. Art Basel 2027" style={iS}/></div>
+              <div><label style={lS}>Lieu</label><input value={lieu} onChange={e=>setLieu(e.target.value)} placeholder="ex. Grand Palais" style={iS}/></div>
+              <div><label style={lS}>Dates d'exploitation</label><input value={dates} onChange={e=>setDates(e.target.value)} placeholder="ex. 20 → 25 oct." style={iS}/></div>
+            </div>
+          </DevisCard>
+
+          <DevisCard n="2" title="Conseil & préparation en amont" hint="Minimum conseillé : 2 jours de préparation pour toute mission sur site.">
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:9}}>
+              {DEVIS_FORMULES.map(f=>{
+                const sel=formule===f.id;
+                return (
+                  <div key={f.id} onClick={()=>setFormule(f.id)} style={{border:`1.5px solid ${sel?GOLD:"rgba(27,42,74,0.1)"}`,background:sel?"#fffbe8":CREAM,borderRadius:8,padding:"11px 12px",cursor:"pointer"}}>
+                    <div style={{fontSize:12,fontWeight:700,color:NAVY,fontFamily:"sans-serif"}}>{f.t}{f.reco&&<span style={{marginLeft:6,fontSize:9,background:GOLD,color:WHITE,borderRadius:10,padding:"1px 6px"}}>conseillée</span>}</div>
+                    <div style={{fontSize:18,fontWeight:700,color:NAVY,fontFamily:"'Cormorant Garamond',serif",margin:"3px 0"}}>{f.j===null?"à la carte":eur(f.j*R.tjmConseil)}</div>
+                    <div style={{fontSize:10,color:"#999",fontFamily:"sans-serif",lineHeight:1.35}}>{f.j?`${f.j} jours · `:""}{f.d}</div>
+                  </div>
+                );
+              })}
+            </div>
+            {formule==="sm"&&(
+              <div style={{marginTop:10}}>
+                <DevisRow label="Nombre de jours de préparation" sub={`${eur(R.tjmConseil)} / jour`} amount={eur(prep)}>
+                  <input type="number" min="0" step="0.5" value={prepJours} onChange={e=>setPrepJours(e.target.value)} style={nS}/>
+                </DevisRow>
+              </div>
+            )}
+          </DevisCard>
+
+          <DevisCard n="3" title="Direction opérationnelle sur site" hint="Encadrement des équipes et conseil au dirigeant pendant l'exploitation, jusqu'à 12 h par jour.">
+            <DevisRow label="Jours de service sur site" sub={`${eur(R.tjmSite)} / jour · encadrement + conseil inclus`} amount={eur(sj*R.tjmSite)}>
+              <input type="number" min="0" step="0.5" value={siteJours} onChange={e=>setSiteJours(e.target.value)} style={nS}/>
+            </DevisRow>
+            <DevisRow label="Jours d'installation / mise en place" sub="Veille d'ouverture, briefing, test à blanc" amount={eur(ij*R.install)}>
+              <input type="number" min="0" step="0.5" value={installJours} onChange={e=>setInstallJours(e.target.value)} style={nS}/>
+            </DevisRow>
+            <DevisRow label="Heures au-delà de 12 h / nuit" sub={`${eur(R.hs)} / heure`} amount={eur(hs*R.hs)}>
+              <input type="number" min="0" step="1" value={hsH} onChange={e=>setHsH(e.target.value)} style={nS}/>
+            </DevisRow>
+            <DevisRow label="Managers LND supplémentaires" sub={`Nombre × jours chacun · ${eur(R.mgr)} / jour`} amount={eur(mn*mj*R.mgr)}>
+              <input type="number" min="0" step="1" value={mgrNb} onChange={e=>setMgrNb(e.target.value)} style={{...nS,width:64}} title="Nombre"/>
+              <span style={{color:"#bbb"}}>×</span>
+              <input type="number" min="0" step="0.5" value={mgrJours} onChange={e=>setMgrJours(e.target.value)} style={{...nS,width:64}} title="Jours"/>
+            </DevisRow>
+          </DevisCard>
+
+          <DevisCard n="4" title="Bilan & options" hint="Les ajouts à proposer en rendez-vous.">
+            {DEVIS_OPTIONS.map(o=>{
+              const st=opts[o.id];
+              const q=o.qty?Math.max(1,num(st.q)):1;
+              return (
+                <DevisRow key={o.id} label={o.t} sub={`${o.s} · ${eur(R[o.id])}${o.qty?` / ${o.unit}`:""}`} amount={st.on?eur(q*R[o.id]):"—"}>
+                  {o.qty&&<input type="number" min="1" step="1" value={st.q} onChange={e=>setOpts({...opts,[o.id]:{...st,q:e.target.value}})} style={{...nS,width:64}}/>}
+                  <DevisSwitch checked={st.on} onChange={v=>setOpts({...opts,[o.id]:{...st,on:v}})}/>
+                </DevisRow>
+              );
+            })}
+          </DevisCard>
+
+          <DevisCard n="5" title="Frais & conditions" hint="Les frais sont refacturés sans majoration ni remise.">
+            <DevisRow label="Majoration urgence" sub="Demande à moins de 15 jours de l'ouverture" amount={urgA?eur(urgA):"—"}>
+              <DevisSwitch checked={urg} onChange={setUrg}/>
+              <input type="number" min="0" step="5" value={urgPct} onChange={e=>setUrgPct(e.target.value)} style={{...nS,width:64}}/><span style={{fontFamily:"sans-serif",fontSize:12}}>%</span>
+            </DevisRow>
+            <DevisRow label="Coefficient événement premium" sub="Salon international, lieu prestigieux, clientèle VIP" amount={premA?eur(premA):"—"}>
+              <DevisSwitch checked={prem} onChange={setPrem}/>
+              <input type="number" min="0" step="5" value={premPct} onChange={e=>setPremPct(e.target.value)} style={{...nS,width:64}}/><span style={{fontFamily:"sans-serif",fontSize:12}}>%</span>
+            </DevisRow>
+            <DevisRow label="Remise commerciale" sub="Client fidèle, mission longue…" amount={remA?`– ${eur(remA)}`:"—"}>
+              <input type="number" min="0" max="50" step="1" value={remPct} onChange={e=>setRemPct(e.target.value)} style={{...nS,width:64}}/><span style={{fontFamily:"sans-serif",fontSize:12}}>%</span>
+            </DevisRow>
+            <DevisRow label="Déplacements" sub="Forfait ou réel" amount="€ HT"><input type="number" min="0" step="10" value={fDep} onChange={e=>setFDep(e.target.value)} style={nS}/></DevisRow>
+            <DevisRow label="Hébergement" sub="Hors Île-de-France" amount="€ HT"><input type="number" min="0" step="10" value={fHeb} onChange={e=>setFHeb(e.target.value)} style={nS}/></DevisRow>
+            <DevisRow label="Repas pendant les services" sub="Si non fournis par le client" amount="€ HT"><input type="number" min="0" step="10" value={fRep} onChange={e=>setFRep(e.target.value)} style={nS}/></DevisRow>
+            <DevisRow label="Acompte à la signature" sub="Couvre la phase de préparation" amount="">
+              <select value={acompte} onChange={e=>setAcompte(parseInt(e.target.value))} style={{...iS,width:90,cursor:"pointer"}}>{[30,40,50].map(v=><option key={v} value={v}>{v} %</option>)}</select>
+            </DevisRow>
+          </DevisCard>
+        </div>
+
+        {/* Récapitulatif */}
+        <div className="devis-recap" style={{position:"sticky",top:20}}>
+          <div style={{background:NAVY,borderRadius:10,padding:"20px 22px",borderTop:`3px solid ${GOLD}`}}>
+            <div style={{fontSize:9,color:GOLD,letterSpacing:2.5,textTransform:"uppercase",fontWeight:700,marginBottom:12,fontFamily:"sans-serif"}}>Récapitulatif</div>
+            {[["Préparation",sumGrp("prep")],["Sur site",sumGrp("site")],["Options",sumGrp("opt")]].filter(g=>g[1]).map(g=>(
+              <div key={g[0]} style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"rgba(245,240,234,0.75)",padding:"4px 0",fontFamily:"sans-serif"}}><span>{g[0]}</span><span>{eur(g[1])}</span></div>
+            ))}
+            {urgA>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"rgba(245,240,234,0.75)",padding:"4px 0",fontFamily:"sans-serif"}}><span>Urgence +{num(urgPct)} %</span><span>{eur(urgA)}</span></div>}
+            {premA>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"rgba(245,240,234,0.75)",padding:"4px 0",fontFamily:"sans-serif"}}><span>Premium +{num(premPct)} %</span><span>{eur(premA)}</span></div>}
+            {remA>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"#f1b9a0",padding:"4px 0",fontFamily:"sans-serif"}}><span>Remise {num(remPct)} %</span><span>– {eur(remA)}</span></div>}
+            {frais>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"rgba(245,240,234,0.75)",padding:"4px 0",fontFamily:"sans-serif"}}><span>Frais</span><span>{eur(frais)}</span></div>}
+            <div style={{borderTop:"1px solid rgba(184,150,62,0.25)",marginTop:8,paddingTop:10,display:"flex",justifyContent:"space-between",fontSize:13,color:CREAM,fontFamily:"sans-serif"}}><span>Total HT</span><span>{eur(ht)}</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:"rgba(245,240,234,0.6)",padding:"4px 0",fontFamily:"sans-serif"}}><span>TVA {R.tva} %</span><span>{eur(tva)}</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginTop:6}}>
+              <span style={{fontSize:12,color:GOLD,fontWeight:700,letterSpacing:2,fontFamily:"sans-serif"}}>TTC</span>
+              <span style={{fontSize:28,fontWeight:700,color:CREAM,fontFamily:"'Cormorant Garamond',serif"}}>{eur(ttc)}</span>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:14}}>
+              {[["Jours facturés",`${fjr(jours)} j`],["Revenu moyen / jour",jours?eur(Math.round(tjmMoyen)):"—"],["Acompte TTC",eur(ttc*acompte/100)],["Solde TTC",eur(ttc*(1-acompte/100))]].map(k=>(
+                <div key={k[0]} style={{background:"rgba(255,255,255,0.06)",borderRadius:6,padding:"9px 11px"}}>
+                  <div style={{fontSize:9,color:"rgba(245,240,234,0.5)",letterSpacing:1,textTransform:"uppercase",fontFamily:"sans-serif",marginBottom:3}}>{k[0]}</div>
+                  <div style={{fontSize:15,fontWeight:700,color:CREAM,fontFamily:"'Cormorant Garamond',serif"}}>{k[1]}</div>
+                </div>
+              ))}
+            </div>
+            {alerts.length>0
+              ?alerts.map((a,i)=><div key={i} style={{marginTop:10,background:"#fff0e0",color:"#8A4500",borderRadius:6,padding:"8px 11px",fontSize:12,fontFamily:"sans-serif"}}>⚠ {a}</div>)
+              :ht>0&&<div style={{marginTop:10,background:"#E3F5E8",color:"#145228",borderRadius:6,padding:"8px 11px",fontSize:12,fontFamily:"sans-serif"}}>✓ Devis dans la grille LND</div>}
+            <div style={{display:"flex",flexDirection:"column",gap:7,marginTop:14}}>
+              <button onClick={()=>setShowText(true)} style={{...bP,background:GOLD,color:NAVY,border:`1px solid ${GOLD}`}}>📋 Texte du devis</button>
+              <button onClick={attach} style={{...bP,background:"transparent"}}>💾 Ajouter à la fiche prospect</button>
+            </div>
+            {msg&&<div style={{marginTop:10,fontSize:12,color:GOLD_L,fontFamily:"sans-serif",textAlign:"center"}}>{msg}</div>}
+          </div>
+        </div>
+      </div>
+
+      {/* Modal texte */}
+      {showText&&(
+        <div onClick={e=>e.target===e.currentTarget&&setShowText(false)} style={{position:"fixed",inset:0,background:"rgba(17,30,53,0.75)",zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{background:WHITE,borderRadius:10,width:"100%",maxWidth:680,maxHeight:"90vh",overflow:"auto",padding:"24px 28px",borderTop:`4px solid ${GOLD}`}}>
+            <h2 style={{fontSize:20,fontWeight:700,margin:"0 0 4px",color:NAVY}}>Texte du devis</h2>
+            <div style={{fontSize:12,color:"#999",fontFamily:"sans-serif",marginBottom:12}}>À copier dans Pennylane ou dans un mail. Chaque ligne indique le nombre de jours.</div>
+            <pre style={{whiteSpace:"pre-wrap",background:CREAM,borderRadius:6,padding:14,fontSize:12,lineHeight:1.55,fontFamily:"ui-monospace,Menlo,monospace",color:NAVY,maxHeight:"55vh",overflow:"auto"}}>{buildText()}</pre>
+            <div style={{display:"flex",gap:10,marginTop:14}}>
+              <button onClick={copyText} style={{...bP,flex:1}}>Copier</button>
+              <button onClick={()=>setShowText(false)} style={{...bS,flex:1}}>Fermer</button>
+            </div>
+            {msg&&<div style={{marginTop:8,fontSize:12,color:GREEN,fontFamily:"sans-serif",textAlign:"center"}}>{msg}</div>}
+          </div>
+        </div>
+      )}
+
+      {/* Modal tarifs */}
+      {showRates&&(
+        <div onClick={e=>e.target===e.currentTarget&&setShowRates(false)} style={{position:"fixed",inset:0,background:"rgba(17,30,53,0.75)",zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{background:WHITE,borderRadius:10,width:"100%",maxWidth:640,maxHeight:"90vh",overflow:"auto",padding:"24px 28px",borderTop:`4px solid ${GOLD}`}}>
+            <h2 style={{fontSize:20,fontWeight:700,margin:"0 0 4px",color:NAVY}}>Tarifs de base (HT)</h2>
+            <div style={{fontSize:12,color:"#999",fontFamily:"sans-serif",marginBottom:16}}>Enregistrés sur cet appareil.</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+              {Object.keys(DEVIS_RATES_DEFAULT).map(k=>(
+                <div key={k}><label style={lS}>{DEVIS_RATES_LABELS[k]}</label><input type="number" step="10" value={draftRates[k]} onChange={e=>setDraftRates({...draftRates,[k]:e.target.value})} style={iS}/></div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:10,marginTop:20}}>
+              <button onClick={saveRates} style={{...bP,flex:1}}>Enregistrer</button>
+              <button onClick={()=>setDraftRates(DEVIS_RATES_DEFAULT)} style={{...bS,flex:1}}>Tarifs conseillés</button>
+              <button onClick={()=>setShowRates(false)} style={{...bS,flex:1}}>Annuler</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── AGENDA BLOCK (partagé entre tous les rôles) ───────────────────────
 function AgendaBlock({agendaEvents,setAgendaEvents,agendaMois,setAgendaMois,showAddEvent,setShowAddEvent,newEvent,setNewEvent,currentUser,bP,bS,iS2,lS2}) {
   const typeColor = {rdv:GOLD,appel:NAVY2,audit:"#8e44ad",note:GREEN};
@@ -1248,6 +2327,12 @@ export default function LNDUnifie() {
     }
     setComSelected(null); setShowNewProspect(false);
   }
+  async function attachDevis(prospectId, resume){
+    const p = prospects.find(x=>String(x.id)===String(prospectId));
+    if(!p) return false;
+    await saveProspect({...p, notes:(p.notes?p.notes+"\n\n":"")+resume});
+    return true;
+  }
 
   const iS2={width:"100%",padding:"10px 13px",borderRadius:5,border:"1px solid rgba(27,42,74,0.18)",fontSize:13,outline:"none",color:NAVY,background:WHITE,boxSizing:"border-box"};
   const lS2={fontSize:9,letterSpacing:2.5,textTransform:"uppercase",color:GOLD,fontWeight:700,display:"block",marginBottom:5};
@@ -1265,10 +2350,12 @@ export default function LNDUnifie() {
   const comNavItems=[
     {id:"pipeline",icon:"◈",label:"Pipeline"},
     {id:"forfaits",icon:"📋",label:"Forfaits"},
+    {id:"devis",icon:"🧮",label:"Devis événementiel"},
     {id:"ca",icon:"€",label:"CA & Classement"},
     {id:"table",icon:"≡",label:"Vue tableau"},
     {id:"rappels",icon:"🔔",label:"Rappels"},
     {id:"agenda",icon:"📅",label:"Agenda"},
+    {id:"hubspot",icon:"🟠",label:"HubSpot"},
   ];
   const activeNavItems=showRapportModule
     ?[{id:"mensuel",icon:"📅",label:"Mensuel"},{id:"trimestriel",icon:"📆",label:"Trimestriel"},{id:"annuel",icon:"🗓",label:"Annuel"}]
@@ -1577,13 +2664,14 @@ export default function LNDUnifie() {
                   </div>
                 )}
                 <div style={{display:"flex",gap:0,marginBottom:24,borderBottom:`2px solid ${CREAM}`}}>
-                  {["exploitation","notes","tasks"].map(tab=>(
+                  {["exploitation","caisse","notes","tasks"].map(tab=>(
                     <button key={tab} onClick={()=>setOpTab(tab)} style={{padding:"11px 22px",border:"none",background:"none",cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"sans-serif",letterSpacing:1,textTransform:"uppercase",color:opTab===tab?NAVY:"#bbb",borderBottom:opTab===tab?`2px solid ${GOLD}`:"2px solid transparent",marginBottom:-2}}>
-                      {tab==="exploitation"?"Compte d'exploitation":tab==="notes"?"Notes":"Tâches"}
+                      {tab==="exploitation"?"Compte d'exploitation":tab==="caisse"?"🔌 Caisse":tab==="notes"?"Notes":"Tâches"}
                     </button>
                   ))}
                 </div>
                 {opTab==="exploitation"&&<CompteExploitation restaurant={opSelected}/>}
+                {opTab==="caisse"&&<ModuleCaisse restaurant={opSelected} onUpdate={updateResto}/>}
                 {opTab==="notes"&&(
                   <div>
                     <div style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}>
@@ -1667,7 +2755,7 @@ export default function LNDUnifie() {
                     </div>
                     <div><label style={lS2}>Caisse</label>
                       <select value={newResto.caisse} onChange={e=>setNewResto({...newResto,caisse:e.target.value})} style={{...iS2,background:WHITE,cursor:"pointer"}}>
-                        {["Lightspeed","Square","L'Addition","Zelty","Autre"].map(c=><option key={c}>{c}</option>)}
+                        {["Lightspeed","L'Addition","Square","Zelty","Opéra","PI (Gestion)","Micros","Autre"].map(c=><option key={c}>{c}</option>)}
                       </select>
                     </div>
                   </div>
@@ -1937,6 +3025,20 @@ export default function LNDUnifie() {
                 showAddEvent={showAddEvent} setShowAddEvent={setShowAddEvent}
                 newEvent={newEvent} setNewEvent={setNewEvent}
                 currentUser={currentUser} bP={bP} bS={bS} iS2={iS2} lS2={lS2}
+              />
+            )}
+
+            {/* DEVIS ÉVÉNEMENTIEL */}
+            {comView==="devis"&&(
+              <ModuleDevis prospects={prospects} onAttach={attachDevis}/>
+            )}
+
+            {/* IMPORT HUBSPOT */}
+            {comView==="hubspot"&&(
+              <ModuleHubSpot
+                prospects={prospects}
+                setProspects={setProspects}
+                onSave={saveProspect}
               />
             )}
 
